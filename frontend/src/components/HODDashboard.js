@@ -31,6 +31,16 @@ const HODDashboard = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const getProofVerificationChip = (proofSubmitted, proofVerified) => {
+    if (!proofSubmitted) {
+      return <Chip label="NOT SUBMITTED" color="default" size="small" />;
+    } else if (proofVerified) {
+      return <Chip label="VERIFIED" color="success" size="small" />;
+    } else {
+      return <Chip label="PENDING VERIFICATION" color="warning" size="small" />;
+    }
+  };
+
   const fetchRequests = async () => {
     try {
       setLoading(true);
@@ -185,6 +195,7 @@ const HODDashboard = () => {
                 <TableCell>Reason</TableCell>
                 <TableCell>Advisor Comment</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Proof Verification Status</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -207,6 +218,9 @@ const HODDashboard = () => {
                   <TableCell>{request.reason}</TableCell>
                   <TableCell>{request.advisorComment || "-"}</TableCell>
                   <TableCell>{getStatusChip(request.status)}</TableCell>
+                  <TableCell>
+                    {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
+                  </TableCell>
                   <TableCell>
                     {(request.status === "approved_by_advisor" || request.status === "forwarded_to_hod") && (
                       <Box sx={{ display: 'flex', gap: 1 }}>

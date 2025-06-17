@@ -180,6 +180,14 @@ const FacultyODRequestList = () => {
     setViewProofDialogOpen(true);
   };
 
+  const getProofVerificationChip = (verified) => {
+    return verified ? (
+      <Chip label="VERIFIED" color="success" size="small" />
+    ) : (
+      <Chip label="NOT VERIFIED" color="error" size="small" />
+    );
+  };
+
   return (
     <Container maxWidth="lg">
       <Paper elevation={3} sx={{ p: 4, mt: 4 }}>
@@ -211,6 +219,7 @@ const FacultyODRequestList = () => {
                 <TableCell>End Date</TableCell>
                 <TableCell>Reason</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Proof Verification Status</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -233,6 +242,13 @@ const FacultyODRequestList = () => {
                   <TableCell>{request.reason}</TableCell>
                   <TableCell>{getStatusChip(request.status)}</TableCell>
                   <TableCell>
+                    {request.proofSubmitted ? (
+                      getProofVerificationChip(request.proofVerified)
+                    ) : (
+                      <Chip label="NOT SUBMITTED" color="default" size="small" />
+                    )}
+                  </TableCell>
+                  <TableCell>
                     {request.status === "pending" && (
                       <Box sx={{ display: 'flex', gap: 1 }}>
                         <Button
@@ -253,24 +269,28 @@ const FacultyODRequestList = () => {
                         </Button>
                       </Box>
                     )}
-                    {request.proofSubmitted && !request.proofVerified && (
+                    {request.proofSubmitted && (
                       <Box sx={{ display: 'flex', gap: 1 }}>
-                        <Button
-                          variant="contained"
-                          color="success"
-                          size="small"
-                          onClick={() => handleProofVerification(request._id, true)}
-                        >
-                          Verify Proof
-                        </Button>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          size="small"
-                          onClick={() => handleProofVerification(request._id, false)}
-                        >
-                          Reject Proof
-                        </Button>
+                        {!request.proofVerified && (
+                          <>
+                            <Button
+                              variant="contained"
+                              color="success"
+                              size="small"
+                              onClick={() => handleProofVerification(request._id, true)}
+                            >
+                              Verify Proof
+                            </Button>
+                            <Button
+                              variant="contained"
+                              color="error"
+                              size="small"
+                              onClick={() => handleProofVerification(request._id, false)}
+                            >
+                              Reject Proof
+                            </Button>
+                          </>
+                        )}
                         <Button
                           variant="outlined"
                           size="small"
@@ -313,34 +333,9 @@ const FacultyODRequestList = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={selectedRequest !== null}
-        onClose={() => setSelectedRequest(null)}
-      >
-        <DialogTitle>Update Request Status</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            margin="dense"
-            label="Remarks"
-            type="text"
-            fullWidth
-            multiline
-            rows={4}
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setSelectedRequest(null)}>Cancel</Button>
-          <Button onClick={() => handleSubmit()} color="success">
-            Approve
-          </Button>
-          <Button onClick={() => handleSubmit()} color="error">
-            Reject
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <>
+        {/* This dialog was causing issues and has been removed */}
+      </>
 
       <Dialog
         open={viewProofDialogOpen}

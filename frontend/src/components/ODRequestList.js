@@ -40,6 +40,16 @@ const ODRequestList = () => {
     fetchFacultyList();
   }, []);
 
+  const getProofVerificationChip = (proofSubmitted, proofVerified) => {
+    if (!proofSubmitted) {
+      return <Chip label="NOT SUBMITTED" color="default" size="small" />;
+    } else if (proofVerified) {
+      return <Chip label="VERIFIED" color="success" size="small" />;
+    } else {
+      return <Chip label="PENDING VERIFICATION" color="warning" size="small" />;
+    }
+  };
+
   const fetchRequests = async () => {
     try {
       const res = await axios.get(
@@ -222,7 +232,7 @@ const ODRequestList = () => {
                 <TableCell>End Date</TableCell>
                 <TableCell>Class Advisor</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Proof Status</TableCell>
+                <TableCell>Proof Verification Status</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -248,61 +258,42 @@ const ODRequestList = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    {request.proofDocument ? (
+                    {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
+                  </TableCell>
+                  <TableCell>
+                    {request.status === "pending" && (
                       <Button
                         variant="contained"
                         color="primary"
                         size="small"
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setProofDialogOpen(true);
+                        }}
+                      >
+                        Submit Proof
+                      </Button>
+                    )}
+                    {(request.status === "approved_by_hod" || request.status === "rejected") && (
+                      <Button
+                        variant="contained"
+                        color="secondary"
+                        size="small"
+                        onClick={() => handleDownloadPDF(request._id)}
+                        startIcon={<DownloadIcon />}
+                      >
+                        Download PDF
+                      </Button>
+                    )}
+                    {request.proofDocument && (
+                      <Button
+                        variant="outlined"
+                        size="small"
                         onClick={() => handleViewProof(request.proofDocument)}
+                        sx={{ ml: 1 }}
                       >
                         View Proof
                       </Button>
-                    ) : (
-                      <Chip
-                        label={
-                          request.proofSubmitted
-                            ? request.proofVerified
-                              ? "Proof Verified"
-                              : "Proof Pending Verification"
-                            : "Not Submitted"
-                        }
-                        color={
-                          request.proofSubmitted
-                            ? request.proofVerified
-                              ? "success"
-                              : "warning"
-                            : "default"
-                        }
-                        size="small"
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {request.status === "approved_by_hod" && (
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          startIcon={<DownloadIcon />}
-                          onClick={() => handleDownloadPDF(request._id)}
-                        >
-                          Download PDF
-                        </Button>
-                        {!request.proofSubmitted && (
-                          <Button
-                            variant="contained"
-                            color="secondary"
-                            size="small"
-                            onClick={() => {
-                              setSelectedRequest(request);
-                              setProofDialogOpen(true);
-                            }}
-                          >
-                            Submit Proof
-                          </Button>
-                        )}
-                      </Box>
                     )}
                   </TableCell>
                 </TableRow>

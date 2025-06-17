@@ -197,6 +197,78 @@ router.get(
     }
   })
 );
+// @desc    Verify proof document
+// @route   PUT /api/od-requests/:id/verify-proof
+// @access  Private/ClassAdvisor
+router.put(
+  "/:id/verify-proof",
+  protect,
+  faculty,
+  asyncHandler(async (req, res) => {
+    console.log(`Attempting to verify proof for request ID: ${req.params.id}`);
+    const odRequest = await ODRequest.findById(req.params.id)
+      .populate("student", "name email registerNo department year")
+      .populate("facultyAdvisor", "name email");
+
+    if (!odRequest) {
+      console.log(`OD Request with ID ${req.params.id} not found.`);
+      res.status(404);
+      throw new Error("OD request not found");
+    }
+
+    // Check if the user is the class advisor
+    if (odRequest.classAdvisor.toString() !== req.user.id.toString()) {
+      res.status(401);
+      throw new Error("Not authorized");
+    }
+
+    // Check if proof has been submitted
+    if (!odRequest.proofSubmitted) {
+      res.status(400);
+      throw new Error("No proof document submitted yet");
+    }
+
+    odRequest.proofVerified = true;
+    odRequest.updatedAt = Date.now();
+
+    const updatedRequest = await odRequest.save();
+
+    // Generate OD letter PDF for verification
+    const odLetterPath = path.join('uploads/od_letters', `od_verification_${updatedRequest._id}.pdf`);
+    await generateODLetterPDF(updatedRequest, odLetterPath);
+
+    // Send email notification to faculty (class advisor and optionally notifyFaculty)
+    const facultyEmails = [odRequest.facultyAdvisor.email];
+    if (odRequest.notifyFaculty && odRequest.notifyFaculty.length > 0) {
+        const notifiedFacultyEmails = await User.find({ _id: { $in: odRequest.notifyFaculty } }).select('email');
+        facultyEmails.push(...notifiedFacultyEmails.map(f => f.email));
+    }
+
+    await sendProofVerificationNotification(
+        facultyEmails,
+        {
+            name: odRequest.student.name,
+            registerNo: odRequest.student.registerNo,
+            department: odRequest.student.department,
+            year: odRequest.student.year,
+        },
+        {
+            eventName: odRequest.eventName,
+            eventDate: odRequest.eventDate,
+            startDate: odRequest.startDate,
+            endDate: odRequest.endDate,
+            timeType: odRequest.timeType,
+            startTime: odRequest.startTime,
+            endTime: odRequest.endTime,
+            reason: odRequest.reason,
+        },
+        odRequest.proofDocument,
+        odLetterPath
+    );
+
+    res.json(updatedRequest);
+  })
+);
 
 // @desc    Get all OD requests for a class advisor
 // @route   GET /api/od-requests/advisor-requests
@@ -345,6 +417,7 @@ router.get(
     }
   })
 );
+
 
 // @desc    Faculty approve OD request (with PDF generation)
 // @route   PUT /api/od-requests/:id/hod-approve

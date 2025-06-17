@@ -39,6 +39,16 @@ const AdminDashboard = () => {
     notificationEnabled: true,
   });
 
+  const getProofVerificationChip = (proofSubmitted, proofVerified) => {
+    if (!proofSubmitted) {
+      return <Chip label="NOT SUBMITTED" color="default" size="small" />;
+    } else if (proofVerified) {
+      return <Chip label="VERIFIED" color="success" size="small" />;
+    } else {
+      return <Chip label="PENDING VERIFICATION" color="warning" size="small" />;
+    }
+  };
+
   const fetchRequests = async () => {
     try {
       const { data } = await axios.get('/api/od-requests/admin');
@@ -219,6 +229,7 @@ const AdminDashboard = () => {
                 <TableCell>Reason</TableCell>
                 <TableCell>Faculty Advisor</TableCell>
                 <TableCell>Status</TableCell>
+                <TableCell>Proof Verification Status</TableCell>
                 <TableCell>Time Elapsed</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
@@ -248,7 +259,10 @@ const AdminDashboard = () => {
                     />
                   </TableCell>
                   <TableCell>
-                    {getTimeElapsed(request.lastStatusChangeAt || request.createdAt)}
+                    {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
+                  </TableCell>
+                  <TableCell>
+                    {request.lastStatusChangeAt ? getTimeElapsed(request.lastStatusChangeAt) : 'N/A'}
                   </TableCell>
                   <TableCell>
                     {request.status === 'forwarded_to_admin' && (
