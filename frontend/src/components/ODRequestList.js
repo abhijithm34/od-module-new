@@ -261,7 +261,7 @@ const ODRequestList = () => {
                     {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
                   </TableCell>
                   <TableCell>
-                    {request.status === "pending" && (
+                    {request.status === "approved_by_hod" && !request.proofSubmitted && (
                       <Button
                         variant="contained"
                         color="primary"
