@@ -233,9 +233,27 @@ router.put(
 
     const updatedRequest = await odRequest.save();
 
-    // Generate OD letter PDF for verification
-    const odLetterPath = path.join('uploads/od_letters', `od_verification_${updatedRequest._id}.pdf`);
-    await generateODLetterPDF(updatedRequest, odLetterPath);
+    // Check if approved PDF already exists, if not generate it
+    let approvedPDFPath = updatedRequest.approvedPDFPath;
+    const expectedApprovedPath = path.resolve('uploads/od_letters', `approved_${updatedRequest._id}.pdf`);
+    
+    // Check if the stored path exists, or if the expected file exists on disk
+    if (!approvedPDFPath || !fs.existsSync(approvedPDFPath)) {
+      if (fs.existsSync(expectedApprovedPath)) {
+        // File exists on disk but not in database, use it and update database
+        approvedPDFPath = expectedApprovedPath;
+        updatedRequest.approvedPDFPath = approvedPDFPath;
+        await updatedRequest.save();
+      } else {
+        // File doesn't exist, generate new one
+        approvedPDFPath = expectedApprovedPath;
+        await generateApprovedPDF(updatedRequest, approvedPDFPath);
+        
+        // Save the path to the database
+        updatedRequest.approvedPDFPath = approvedPDFPath;
+        await updatedRequest.save();
+      }
+    }
 
     // Send email notification to faculty (class advisor and optionally notifyFaculty)
     const facultyEmails = [odRequest.facultyAdvisor.email];
@@ -263,7 +281,7 @@ router.put(
             reason: odRequest.reason,
         },
         odRequest.proofDocument,
-        odLetterPath
+        approvedPDFPath
     );
 
     res.json(updatedRequest);
@@ -455,6 +473,15 @@ router.put(
     odRequest.status = "approved_by_hod";
 
     const updatedRequest = await odRequest.save();
+    
+    // Generate approved PDF when HOD approves the request
+    const approvedPDFPath = path.resolve('uploads/od_letters', `approved_${updatedRequest._id}.pdf`);
+    await generateApprovedPDF(updatedRequest, approvedPDFPath);
+    
+    // Save the path to the database
+    updatedRequest.approvedPDFPath = approvedPDFPath;
+    await updatedRequest.save();
+    
     console.log("OD Request status updated by HOD:", updatedRequest);
     res.json(updatedRequest);
   })
@@ -981,187 +1008,26 @@ router.get(
       throw new Error("Not authorized to download this request");
     }
 
-    const doc = new PDFDocument({ margin: 30 });
+    // Check if approved PDF already exists, if not generate it
+    let approvedPDFPath = odRequest.approvedPDFPath;
+    if (!approvedPDFPath || !fs.existsSync(approvedPDFPath)) {
+      approvedPDFPath = path.resolve('uploads/od_letters', `approved_${odRequest._id}.pdf`);
+      await generateApprovedPDF(odRequest, approvedPDFPath);
+      
+      // Save the path to the database
+      odRequest.approvedPDFPath = approvedPDFPath;
+      await odRequest.save();
+    }
 
+    // Send the existing PDF file
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=od_request_${odRequest._id}.pdf`
     );
-
-    doc.pipe(res);
-
-    // Page border
-    doc
-      .rect(
-        doc.page.margins.left - 5,
-        doc.page.margins.top - 5,
-        doc.page.width - doc.page.margins.left - doc.page.margins.right + 10,
-        doc.page.height - doc.page.margins.top - doc.page.margins.bottom + 10
-      )
-      .stroke();
-
-    // Set initial font
-    doc.font("Helvetica").fontSize(9);
-
-    // Header
-    doc
-      .fontSize(9)
-      .font("Helvetica-Bold")
-      .text("COLLEGE OF ENGINEERING GUINDY", { align: "center" });
-    doc.text("Chennai-600025", { align: "center" });
-    doc.moveDown(0.7);
-
-    doc
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text("ON DUTY APPROVAL FORM", { align: "center" });
-    doc.moveDown(1.2);
-
-    // Layout configuration
-    const startX = doc.page.margins.left;
-    const totalWidth =
-      doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const labelWidth = totalWidth * 0.35;
-    const valueWidth = totalWidth * 0.65;
-    const cellWidths = [labelWidth, valueWidth];
-    let currentY = doc.y;
-    const rowHeight = 25;
-    let itemCounter = 1;
-
-    // Helper function with borders
-    const drawLabeledRow = (label, value) => {
-      drawTableRowContent(
-        doc,
-        [`${itemCounter++}. ${label}`, value],
-        cellWidths,
-        startX,
-        currentY,
-        rowHeight,
-        false,
-        true
-      );
-      currentY += rowHeight + 2; // Add spacing between rows
-    };
-
-    // Student + Purpose Details
-    drawLabeledRow("Name:", odRequest.student.name);
-    drawLabeledRow("Register Number:", odRequest.student.registerNo || "N/A");
-    drawLabeledRow("Department:", odRequest.student.department);
-    drawLabeledRow("Year:", odRequest.student.year);
-    drawLabeledRow("OD For What Purpose:", odRequest.reason);
-
-    const daysRequired =
-      Math.ceil(
-        (new Date(odRequest.endDate) - new Date(odRequest.startDate)) /
-          (1000 * 60 * 60 * 24)
-      ) + 1;
-    drawLabeledRow(
-      "No. of OD Days required:",
-      `${daysRequired} day(s) from ${new Date(
-        odRequest.startDate
-      ).toLocaleDateString()} to ${new Date(
-        odRequest.endDate
-      ).toLocaleDateString()}`
-    );
-
-    drawLabeledRow(
-      "Authority Sanctioning the OD:",
-      `${odRequest.classAdvisor.name} (Class Advisor) and ${odRequest.hod.name} (HOD)`
-    );
-    drawLabeledRow("Date of Sanction:", new Date().toLocaleDateString());
-
-    // Add time information based on timeType
-    if (odRequest.timeType === "particularHours") {
-      const startTimeStr = odRequest.startTime
-        ? new Date(odRequest.startTime).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "N/A";
-      const endTimeStr = odRequest.endTime
-        ? new Date(odRequest.endTime).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "N/A";
-      drawLabeledRow(
-        "No. of OD Full days/Half Days Availed:",
-        `Particular Hours (${startTimeStr} to ${endTimeStr})`
-      );
-    } else {
-      drawLabeledRow("No. of OD Full days/Half Days Availed:", "Full Day");
-    }
-
-    doc.moveDown(2); // Space before signatures
-
-    // Signature Section
-    const sigX = startX;
-    const sigWidth = totalWidth;
-    const colWidth = sigWidth / 3;
-    let sigY = doc.y;
-    const sigRowHeight = 20;
-    const sigContentHeight = 50;
-
-    // Header row
-    drawTableRowContent(
-      doc,
-      ["CLASS ADVISOR", "HOD", "STUDENT"],
-      [colWidth, colWidth, colWidth],
-      sigX,
-      sigY,
-      sigRowHeight,
-      true
-    );
-    sigY += sigRowHeight;
-
-    // Signature Details
-    const sigDataY = sigY;
-    const textOptions = { width: colWidth, align: "left" };
-
-    // Class Advisor
-    doc.x = sigX;
-    doc.y = sigDataY;
-    doc
-      .font("Helvetica")
-      .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
-    doc.moveDown(0.5);
-    doc.text("", textOptions);
-    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
-    const classEndY = doc.y;
-
-    // HOD
-    doc.x = sigX + colWidth;
-    doc.y = sigDataY;
-    doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
-    doc.moveDown(0.5);
-    doc.text("", textOptions);
-    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
-    const hodEndY = doc.y;
-
-    // Student
-    doc.x = sigX + colWidth * 2;
-    doc.y = sigDataY;
-    doc
-      .font("Helvetica")
-      .text(`Name: ${odRequest.student.name}`, textOptions);
-    doc.moveDown(0.5);
-    doc.text("Signature of the student", textOptions);
-    const studentEndY = doc.y;
-
-    // Bottom Border
-    const maxY = Math.max(classEndY, hodEndY, studentEndY);
-    doc
-      .moveTo(sigX, maxY)
-      .lineTo(sigX + sigWidth, maxY)
-      .stroke();
-
-    doc.end();
-
-    // Ensure the response is finalized only after the PDF stream ends
-    doc.on("end", () => {
-      res.end();
-    });
+    
+    const fileStream = fs.createReadStream(approvedPDFPath);
+    fileStream.pipe(res);
   })
 );
 
@@ -1448,5 +1314,194 @@ router.get(
     res.json(odRequests);
   })
 );
+
+// Helper function to generate approved PDF format
+const generateApprovedPDF = async (odRequest, outputPath) => {
+  try {
+    const doc = new PDFDocument({ margin: 30 });
+    const stream = fs.createWriteStream(outputPath);
+    doc.pipe(stream);
+
+    // Page border
+    doc
+      .rect(
+        doc.page.margins.left - 5,
+        doc.page.margins.top - 5,
+        doc.page.width - doc.page.margins.left - doc.page.margins.right + 10,
+        doc.page.height - doc.page.margins.top - doc.page.margins.bottom + 10
+      )
+      .stroke();
+
+    // Set initial font
+    doc.font("Helvetica").fontSize(9);
+
+    // Header
+    doc
+      .fontSize(9)
+      .font("Helvetica-Bold")
+      .text("COLLEGE OF ENGINEERING GUINDY", { align: "center" });
+    doc.text("Chennai-600025", { align: "center" });
+    doc.moveDown(0.7);
+
+    doc
+      .fontSize(12)
+      .font("Helvetica-Bold")
+      .text("ON DUTY APPROVAL FORM", { align: "center" });
+    doc.moveDown(1.2);
+
+    // Layout configuration
+    const startX = doc.page.margins.left;
+    const totalWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const labelWidth = totalWidth * 0.35;
+    const valueWidth = totalWidth * 0.65;
+    const cellWidths = [labelWidth, valueWidth];
+    let currentY = doc.y;
+    const rowHeight = 25;
+    let itemCounter = 1;
+
+    // Helper function with borders
+    const drawLabeledRow = (label, value) => {
+      drawTableRowContent(
+        doc,
+        [`${itemCounter++}. ${label}`, value],
+        cellWidths,
+        startX,
+        currentY,
+        rowHeight,
+        false,
+        true
+      );
+      currentY += rowHeight + 2; // Add spacing between rows
+    };
+
+    // Student + Purpose Details
+    drawLabeledRow("Name:", odRequest.student.name);
+    drawLabeledRow("Register Number:", odRequest.student.registerNo || "N/A");
+    drawLabeledRow("Department:", odRequest.student.department);
+    drawLabeledRow("Year:", odRequest.student.year);
+    drawLabeledRow("OD For What Purpose:", odRequest.reason);
+
+    const daysRequired =
+      Math.ceil(
+        (new Date(odRequest.endDate) - new Date(odRequest.startDate)) /
+          (1000 * 60 * 60 * 24)
+      ) + 1;
+    drawLabeledRow(
+      "No. of OD Days required:",
+      `${daysRequired} day(s) from ${new Date(
+        odRequest.startDate
+      ).toLocaleDateString()} to ${new Date(
+        odRequest.endDate
+      ).toLocaleDateString()}`
+    );
+
+    drawLabeledRow(
+      "Authority Sanctioning the OD:",
+      `${odRequest.classAdvisor.name} (Class Advisor) and ${odRequest.hod.name} (HOD)`
+    );
+    drawLabeledRow("Date of Sanction:", new Date().toLocaleDateString());
+
+    // Add time information based on timeType
+    if (odRequest.timeType === "particularHours") {
+      const startTimeStr = odRequest.startTime
+        ? new Date(odRequest.startTime).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "N/A";
+      const endTimeStr = odRequest.endTime
+        ? new Date(odRequest.endTime).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "N/A";
+      drawLabeledRow(
+        "No. of OD Full days/Half Days Availed:",
+        `Particular Hours (${startTimeStr} to ${endTimeStr})`
+      );
+    } else {
+      drawLabeledRow("No. of OD Full days/Half Days Availed:", "Full Day");
+    }
+
+    doc.moveDown(2); // Space before signatures
+
+    // Signature Section
+    const sigX = startX;
+    const sigWidth = totalWidth;
+    const colWidth = sigWidth / 3;
+    let sigY = doc.y;
+    const sigRowHeight = 20;
+    const sigContentHeight = 50;
+
+    // Header row
+    drawTableRowContent(
+      doc,
+      ["CLASS ADVISOR", "HOD", "STUDENT"],
+      [colWidth, colWidth, colWidth],
+      sigX,
+      sigY,
+      sigRowHeight,
+      true
+    );
+    sigY += sigRowHeight;
+
+    // Signature Details
+    const sigDataY = sigY;
+    const textOptions = { width: colWidth, align: "left" };
+
+    // Class Advisor
+    doc.x = sigX;
+    doc.y = sigDataY;
+    doc
+      .font("Helvetica")
+      .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
+    doc.moveDown(0.5);
+    doc.text("", textOptions);
+    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
+    const classEndY = doc.y;
+
+    // HOD
+    doc.x = sigX + colWidth;
+    doc.y = sigDataY;
+    doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
+    doc.moveDown(0.5);
+    doc.text("", textOptions);
+    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
+    const hodEndY = doc.y;
+
+    // Student
+    doc.x = sigX + colWidth * 2;
+    doc.y = sigDataY;
+    doc
+      .font("Helvetica")
+      .text(`Name: ${odRequest.student.name}`, textOptions);
+    doc.moveDown(0.5);
+    doc.text("Signature of the student", textOptions);
+    const studentEndY = doc.y;
+
+    // Find the maximum Y position for consistent row height
+    const maxY = Math.max(classEndY, hodEndY, studentEndY);
+    const finalRowHeight = maxY - sigDataY + 10;
+
+    // Draw borders for signature section
+    doc.lineWidth(0.5);
+    doc.rect(sigX, sigDataY - sigRowHeight, sigWidth, sigRowHeight + finalRowHeight).stroke();
+
+    // Vertical lines
+    doc.moveTo(sigX + colWidth, sigDataY - sigRowHeight).lineTo(sigX + colWidth, sigDataY + finalRowHeight).stroke();
+    doc.moveTo(sigX + colWidth * 2, sigDataY - sigRowHeight).lineTo(sigX + colWidth * 2, sigDataY + finalRowHeight).stroke();
+
+    doc.end();
+
+    return new Promise((resolve, reject) => {
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    });
+  } catch (error) {
+    console.error('Error generating approved PDF:', error);
+    throw error;
+  }
+};
 
 module.exports = router;

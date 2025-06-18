@@ -79,6 +79,14 @@ const odRequestSchema = new mongoose.Schema(
       type: String, // URL to the proof document
       default: null,
     },
+    odLetterPath: {
+      type: String, // Path to the generated OD letter PDF
+      default: null,
+    },
+    approvedPDFPath: {
+      type: String, // Path to the approved PDF (for download and email)
+      default: null,
+    },
     proofSubmitted: {
       type: Boolean,
       default: false,

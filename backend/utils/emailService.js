@@ -57,7 +57,7 @@ const sendODRequestNotification = async (facultyEmail, studentDetails, odDetails
 };
 
 // Function to send proof verification notification to multiple faculty members
-const sendProofVerificationNotification = async (facultyEmails, studentDetails, odDetails, proofDocumentPath, odLetterPath) => {
+const sendProofVerificationNotification = async (facultyEmails, studentDetails, odDetails, proofDocumentPath, approvedPDFPath) => {
   if (!facultyEmails || facultyEmails.length === 0) {
     console.log('No faculty members to notify');
     return;
@@ -67,19 +67,21 @@ const sendProofVerificationNotification = async (facultyEmails, studentDetails, 
     const attachments = [];
     
     // Add student's proof document if it exists
-    if (proofDocumentPath && fs.existsSync(proofDocumentPath)) {
+    if (proofDocumentPath && fs.existsSync(path.resolve(proofDocumentPath))) {
       const proofExt = path.extname(proofDocumentPath).toLowerCase();
       attachments.push({
         filename: `student_proof${proofExt}`,
-        path: proofDocumentPath
+        path: path.resolve(proofDocumentPath)
       });
     }
 
-    // Add generated OD letter if it exists
-    if (odLetterPath && fs.existsSync(odLetterPath)) {
+    // Add approved PDF if it exists
+    if (approvedPDFPath && fs.existsSync(path.resolve(approvedPDFPath))) {
+      const approvedExt = path.extname(approvedPDFPath).toLowerCase();
+      const approvedName = path.basename(approvedPDFPath, approvedExt);
       attachments.push({
-        filename: 'od_approval_letter.pdf',
-        path: odLetterPath
+        filename: `${approvedName}_approved_form${approvedExt}`,
+        path: path.resolve(approvedPDFPath)
       });
     }
 
@@ -111,7 +113,7 @@ const sendProofVerificationNotification = async (facultyEmails, studentDetails, 
         <p>Please find attached:</p>
         <ul>
           <li>The student's submitted proof document</li>
-          <li>The generated OD approval letter with verification details</li>
+          <li>The approved OD form with verification details</li>
         </ul>
       `,
       attachments
