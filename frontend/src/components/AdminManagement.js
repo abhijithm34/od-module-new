@@ -29,6 +29,8 @@ import {
   Title
 } from 'chart.js';
 import axios from 'axios';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // Register ChartJS components
 ChartJS.register(ArcElement, ChartTooltip, Legend, Title);
@@ -92,17 +94,32 @@ const AdminManagement = () => {
 
   const filteredRequests = requests.filter(request => {
     if (!searchQuery) return true;
-    
     const searchValue = searchQuery.toLowerCase();
     switch (searchField) {
-      case 'reason':
-        return request.reason?.toLowerCase().includes(searchValue);
       case 'student':
         return request.student?.name?.toLowerCase().includes(searchValue);
-      case 'department':
-        return request.department?.toLowerCase().includes(searchValue);
+      case 'regno':
+        return request.student?.registerNo?.toLowerCase().includes(searchValue);
       case 'event':
         return request.eventName?.toLowerCase().includes(searchValue);
+      case 'year':
+        // Match both numeric and ordinal (e.g., '3', '3rd', 'third')
+        const yearStr = (request.year || '').toLowerCase();
+        return yearStr.includes(searchValue) ||
+          (searchValue === '1st' && yearStr === '1') ||
+          (searchValue === '2nd' && yearStr === '2') ||
+          (searchValue === '3rd' && yearStr === '3') ||
+          (searchValue === '4th' && yearStr === '4');
+      case 'academicYear':
+        // Check eventDate year, startDate year, or endDate year
+        const eventYear = request.eventDate ? new Date(request.eventDate).getFullYear().toString() : '';
+        const startYear = request.startDate ? new Date(request.startDate).getFullYear().toString() : '';
+        const endYear = request.endDate ? new Date(request.endDate).getFullYear().toString() : '';
+        return (
+          eventYear.includes(searchValue) ||
+          startYear.includes(searchValue) ||
+          endYear.includes(searchValue)
+        );
       default:
         return true;
     }
@@ -153,11 +170,63 @@ const AdminManagement = () => {
     }
   };
 
-  const chartData = {
-    labels: studentStats.map(stat => `Year ${stat.year}`),
+  // Calculate OD requests per year (from eventDate, startDate, or endDate)
+  const odRequestsByYear = {};
+  requests.forEach(req => {
+    let year = '';
+    if (req.eventDate) year = new Date(req.eventDate).getFullYear();
+    else if (req.startDate) year = new Date(req.startDate).getFullYear();
+    else if (req.endDate) year = new Date(req.endDate).getFullYear();
+    if (year) {
+      odRequestsByYear[year] = (odRequestsByYear[year] || 0) + 1;
+    }
+  });
+  const odYears = Object.keys(odRequestsByYear).sort();
+  const odCounts = odYears.map(y => odRequestsByYear[y]);
+
+  // Pie chart for OD status (approved, rejected, pending, etc.)
+  const statusCounts = requests.reduce((acc, req) => {
+    const status = req.status?.replace(/_/g, ' ') || 'Unknown';
+    acc[status] = (acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  const statusLabels = Object.keys(statusCounts);
+  const statusData = statusLabels.map(label => statusCounts[label]);
+  const statusColors = ['#4caf50', '#f44336', '#ff9800', '#2196f3', '#9c27b0', '#607d8b'];
+
+  const statusChartData = {
+    labels: statusLabels,
     datasets: [
       {
-        data: studentStats.map(stat => stat.count),
+        data: statusData,
+        backgroundColor: statusColors,
+        borderWidth: 1,
+      },
+    ],
+  };
+
+  const statusChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+      },
+      title: {
+        display: true,
+        text: 'OD Requests by Status',
+        font: {
+          size: 16
+        }
+      }
+    }
+  };
+
+  const chartData = {
+    labels: odYears.map(y => `Year ${y}`),
+    datasets: [
+      {
+        data: odCounts,
         backgroundColor: [
           '#FF6384',
           '#36A2EB',
@@ -180,12 +249,43 @@ const AdminManagement = () => {
       },
       title: {
         display: true,
-        text: 'Student Distribution by Year',
+        text: 'OD Requests by Year',
         font: {
           size: 16
         }
       }
     }
+  };
+
+  // PDF download handler
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('OD Requests', 14, 18);
+    const tableColumn = [
+      'Student Name',
+      'Roll Number',
+      'Department',
+      'Event',
+      'Date',
+      'Reason',
+      'Faculty Advisor',
+      'Status',
+      'Time Elapsed',
+    ];
+    const tableRows = filteredRequests.map(request => [
+      request.student?.name || 'N/A',
+      request.student?.registerNo || 'N/A',
+      request.department || 'N/A',
+      request.eventName || 'N/A',
+      request.eventDate ? new Date(request.eventDate).toLocaleDateString() : 'N/A',
+      request.reason || 'N/A',
+      request.classAdvisor?.name || 'N/A',
+      request.status?.replace(/_/g, ' '),
+      getTimeElapsed(request.lastStatusChangeAt || request.createdAt),
+    ]);
+    autoTable(doc, { head: [tableColumn], body: tableRows, startY: 24 });
+    doc.save('od-requests.pdf');
   };
 
   if (loading || statsLoading) {
@@ -206,13 +306,25 @@ const AdminManagement = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Student Distribution by Year
+              OD Requests by Year
             </Typography>
             <Box sx={{ height: 300, position: 'relative' }}>
-              {studentStats.length > 0 ? (
+              {odYears.length > 0 ? (
                 <Pie data={chartData} options={chartOptions} />
               ) : (
-                <Alert severity="info">No student data available</Alert>
+                <Alert severity="info">No OD request data available</Alert>
+              )}
+            </Box>
+            {/* Statistics summary below the pie chart */}
+            <Box sx={{ mt: 2 }}>
+              {odYears.length > 0 ? (
+                odYears.map((year, idx) => (
+                  <Typography key={year} variant="body1" gutterBottom>
+                    {`Year ${year}`}: {odCounts[idx]}
+                  </Typography>
+                ))
+              ) : (
+                <Alert severity="info">No statistics available</Alert>
               )}
             </Box>
           </Paper>
@@ -221,13 +333,21 @@ const AdminManagement = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Statistics Summary
+              OD Requests by Status
             </Typography>
+            <Box sx={{ height: 300, position: 'relative' }}>
+              {statusLabels.length > 0 ? (
+                <Pie data={statusChartData} options={statusChartOptions} />
+              ) : (
+                <Alert severity="info">No OD request status data available</Alert>
+              )}
+            </Box>
+            {/* Statistics summary below the pie chart */}
             <Box sx={{ mt: 2 }}>
-              {studentStats.length > 0 ? (
-                studentStats.map((stat) => (
-                  <Typography key={stat.year} variant="body1" gutterBottom>
-                    Year {stat.year}: {stat.count} students
+              {statusLabels.length > 0 ? (
+                statusLabels.map((label, idx) => (
+                  <Typography key={label} variant="body1" gutterBottom>
+                    {label}: {statusCounts[label]}
                   </Typography>
                 ))
               ) : (
@@ -241,6 +361,16 @@ const AdminManagement = () => {
       <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
         All OD Requests
       </Typography>
+
+      <Box display="flex" justifyContent="flex-end" mb={2}>
+        <Button
+          variant="outlined"
+          color="secondary"
+          onClick={handleDownloadPDF}
+        >
+          Download PDF
+        </Button>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -273,9 +403,10 @@ const AdminManagement = () => {
             onChange={handleSearchFieldChange}
             variant="outlined"
           >
-            <MenuItem value="reason">Search by Reason</MenuItem>
-            <MenuItem value="student">Search by Student</MenuItem>
-            <MenuItem value="department">Search by Department</MenuItem>
+            <MenuItem value="student">Search by Student Name</MenuItem>
+            <MenuItem value="regno">Search by Register Number</MenuItem>
+            <MenuItem value="year">Search by Year (e.g., 3rd, 2nd)</MenuItem>
+            <MenuItem value="academicYear">Search by Academic Year (e.g., 2023)</MenuItem>
             <MenuItem value="event">Search by Event</MenuItem>
           </TextField>
         </Grid>

@@ -66,11 +66,41 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
+  limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
   fileFilter: function (req, file, cb) {
     const filetypes = /jpeg|jpg|png|pdf/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = filetypes.test(file.mimetype);
 
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb("Error: Only PDF, JPEG, JPG & PNG files are allowed!");
+    }
+  },
+});
+
+// Configure multer for file upload
+const brochureStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = 'uploads/brochures';
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + '-' + file.originalname);
+  },
+});
+
+const brochureUpload = multer({
+  storage: brochureStorage,
+  limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
+  fileFilter: function (req, file, cb) {
+    const filetypes = /jpeg|jpg|png|pdf/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
     if (mimetype && extname) {
       return cb(null, true);
     } else {
@@ -86,6 +116,7 @@ router.post(
   "/",
   protect,
   student,
+  brochureUpload.single('brochure'),
   asyncHandler(async (req, res) => {
     try {
       const { eventName, eventDate, startDate, endDate, timeType, startTime, endTime, reason, notifyFaculty } = req.body;
@@ -117,7 +148,8 @@ router.post(
         hod: hod._id,
         department: student.department,
         year: student.year,
-        notifyFaculty: notifyFaculty || []
+        notifyFaculty: notifyFaculty || [],
+        brochure: req.file ? req.file.path : null,
       });
 
       await odRequest.save();
@@ -471,6 +503,7 @@ router.put(
     odRequest.updatedAt = Date.now();
     odRequest.facultyAdvisor = facultyAdvisor; // Ensure facultyAdvisor is preserved
     odRequest.status = "approved_by_hod";
+    odRequest.hodApprovedAt = new Date();
 
     const updatedRequest = await odRequest.save();
     
@@ -778,107 +811,66 @@ router.get(
 
     doc.moveDown(2); // More space before signatures
 
-    // Signatures and Approvals Table
-    const signaturesStartX = doc.page.margins.left;
-    const signaturesTotalWidth =
-      doc.page.width - doc.page.margins.left - doc.page.margins.right;
-    const signatureColWidth = signaturesTotalWidth / 3; // Three equal columns
-    let signaturesCurrentY = doc.y;
-    const signatureHeaderHeight = 20; // Height for signature header row
-    const signatureContentHeight = 50; // Height for content cells below header
-
-    // Draw top horizontal line for the signature table
-    // doc.moveTo(signaturesStartX, signaturesCurrentY).lineTo(signaturesStartX + signaturesTotalWidth, signaturesCurrentY).stroke();
+    // Signature Section (no visible table borders)
+    const sigX = purposeStartX;
+    const sigWidth = purposeTotalWidth;
+    const colWidth = sigWidth / 4; // 4 columns: Student, Class Advisor, HOD, Dean
+    let sigY = purposeCurrentY;
+    const sigRowHeight = 20;
+    let sigItemCounter = itemCounter;
 
     // Header row for signatures
     drawTableRowContent(
       doc,
-      ["CLASS ADVISOR", "HOD", "STUDENT"],
-      [signatureColWidth, signatureColWidth, signatureColWidth],
-      signaturesStartX,
-      signaturesCurrentY,
-      signatureHeaderHeight,
+      ["STUDENT", "CLASS ADVISOR", "HOD", "DEAN"],
+      [colWidth, colWidth, colWidth, colWidth],
+      sigX,
+      sigY,
+      sigRowHeight,
       true
     );
-    signaturesCurrentY += signatureHeaderHeight;
-    // doc.moveTo(signaturesStartX, signaturesCurrentY).lineTo(signaturesStartX + signaturesTotalWidth, signaturesCurrentY).stroke(); // Draw line after header
+    sigY += sigRowHeight;
 
     // Data rows for signatures
-    const signatureDataStartY = signaturesCurrentY; // Capture Y after header
+    const sigDataY = sigY;
+    const textOptions = { width: colWidth, align: "left" };
 
-    // Class Advisor Column
-    doc.x = signaturesStartX;
-    doc.y = signatureDataStartY;
-    doc.font("Helvetica").text(`Name: ${odRequest.classAdvisor.name}`, {
-      width: signatureColWidth,
-      align: "left",
-    });
-    doc.moveDown(0.5); // Space between name and line
-    // doc.moveTo(doc.x, doc.y).lineTo(doc.x + signatureColWidth - 10, doc.y).stroke(); // Signature line
-    doc.text("", { width: signatureColWidth, align: "left" }); // Blank line for spacing
-    if (
-      odRequest.status === "approved_by_advisor" ||
-      odRequest.status === "approved_by_hod"
-    ) {
-      doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", {
-        width: signatureColWidth,
-        align: "left",
-      });
-    }
-    const classAdvisorEndY = doc.y; // End Y of this column
+    // Student
+    doc.x = sigX;
+    doc.y = sigDataY;
+    doc
+      .font("Helvetica")
+      .text(`Name: ${odRequest.student.name}`, textOptions);
+    const studentSigEndY = doc.y;
 
-    // HOD Column
-    doc.x = signaturesStartX + signatureColWidth;
-    doc.y = signatureDataStartY;
-    doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, {
-      width: signatureColWidth,
-      align: "left",
-    });
-    doc.moveDown(0.5); // Space between name and line
-    // doc.moveTo(doc.x, doc.y).lineTo(doc.x + signatureColWidth - 10, doc.y).stroke(); // Signature line
-    doc.text("", { width: signatureColWidth, align: "left" }); // Blank line for spacing
-    if (odRequest.status === "approved_by_hod") {
-      doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", {
-        width: signatureColWidth,
-        align: "left",
-      });
-    }
-    const hodEndY = doc.y; // End Y of this column
+    // Class Advisor
+    doc.x = sigX + colWidth;
+    doc.y = sigDataY;
+    doc
+      .font("Helvetica")
+      .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
+    doc.moveDown(0.5);
+    doc.text(`Date: ${odRequest.advisorApprovedAt ? new Date(odRequest.advisorApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
+    const classAdvisorSigEndY = doc.y;
 
-    // Student Column
-    doc.x = signaturesStartX + signatureColWidth * 2;
-    doc.y = signatureDataStartY;
-    doc.font("Helvetica").text(`Name: ${odRequest.student.name}`, {
-      width: signatureColWidth,
-      align: "left",
-    });
-    doc.moveDown(0.5); // Space between name and line
-    // doc.moveTo(doc.x, doc.y).lineTo(doc.x + signatureColWidth - 10, doc.y).stroke(); // Signature line
-    doc.text("Signature of the student", {
-      width: signatureColWidth,
-      align: "left",
-    });
-    const studentEndY = doc.y; // End Y of this column
+    // HOD
+    doc.x = sigX + colWidth * 2;
+    doc.y = sigDataY;
+    doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
+    doc.moveDown(0.5);
+    doc.text(`Date: ${odRequest.hodApprovedAt ? new Date(odRequest.hodApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
+    const hodSigEndY = doc.y;
 
-    // Find the maximum Y position to draw the bottom border and vertical lines
-    const maxSignatureColumnY = Math.max(
-      classAdvisorEndY,
-      hodEndY,
-      studentEndY
-    );
-    const finalSignatureY = Math.max(
-      maxSignatureColumnY,
-      signatureDataStartY + signatureContentHeight
-    ); // Ensure minimum content height
+    // Dean (no name, no signature text)
+    doc.x = sigX + colWidth * 3;
+    doc.y = sigDataY;
+    doc.text("", textOptions);
+    const deanSigEndY = doc.y;
 
-    // Draw vertical lines for the signature table
-    // doc.moveTo(signaturesStartX, signatureDataStartY - signatureHeaderHeight).lineTo(signaturesStartX, finalSignatureY).stroke(); // Left-most vertical line
-    // doc.moveTo(signaturesStartX + signatureColWidth, signatureDataStartY - signatureHeaderHeight).lineTo(signaturesStartX + signatureColWidth, finalSignatureY).stroke(); // Vertical line between Col1 and Col2
-    // doc.moveTo(signaturesStartX + (signatureColWidth * 2), signatureDataStartY - signatureHeaderHeight).lineTo(signaturesStartX + (signatureColWidth * 2), finalSignatureY).stroke(); // Vertical line between Col2 and Col3
-    // doc.moveTo(signaturesStartX + (signatureColWidth * 3), signatureDataStartY - signatureHeaderHeight).lineTo(signaturesStartX + (signatureColWidth * 3), finalSignatureY).stroke(); // Right-most vertical line
-
-    // Draw bottom horizontal line for the signature table
-    // doc.moveTo(signaturesStartX, finalSignatureY).lineTo(signaturesStartX + signaturesTotalWidth, finalSignatureY).stroke();
+    // No borders for signature section
+    // ... existing code ...
 
     doc.end();
 
@@ -919,6 +911,7 @@ router.put(
 
       odRequest.status = "approved_by_advisor";
       odRequest.advisorComment = req.body.comment || "";
+      odRequest.advisorApprovedAt = new Date();
       await odRequest.save();
 
       console.log("Request approved by advisor:", odRequest._id);
@@ -1424,21 +1417,21 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
       drawLabeledRow("No. of OD Full days/Half Days Availed:", "Full Day");
     }
 
-    doc.moveDown(2); // Space before signatures
+    doc.moveDown(2); // Add extra space before signature section
 
-    // Signature Section
+    // Signature Section (no visible table borders)
     const sigX = startX;
     const sigWidth = totalWidth;
-    const colWidth = sigWidth / 3;
-    let sigY = doc.y;
+    const colWidth = sigWidth / 4; // 4 columns: Student, Class Advisor, HOD, Dean
+    let sigY = currentY;
     const sigRowHeight = 20;
-    const sigContentHeight = 50;
+    let sigItemCounter = itemCounter;
 
-    // Header row
+    // Header row for signatures
     drawTableRowContent(
       doc,
-      ["CLASS ADVISOR", "HOD", "STUDENT"],
-      [colWidth, colWidth, colWidth],
+      ["STUDENT", "CLASS ADVISOR", "HOD", "DEAN APPROVAL"],
+      [colWidth, colWidth, colWidth, colWidth],
       sigX,
       sigY,
       sigRowHeight,
@@ -1450,47 +1443,42 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     const sigDataY = sigY;
     const textOptions = { width: colWidth, align: "left" };
 
-    // Class Advisor
+    // Student
     doc.x = sigX;
+    doc.y = sigDataY;
+    doc
+      .font("Helvetica")
+      .text(`Name: ${odRequest.student.name}`, textOptions);
+    const studentSigEndY = doc.y;
+
+    // Class Advisor
+    doc.x = sigX + colWidth;
     doc.y = sigDataY;
     doc
       .font("Helvetica")
       .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text("", textOptions);
-    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
-    const classEndY = doc.y;
+    doc.text(`Date: ${odRequest.advisorApprovedAt ? new Date(odRequest.advisorApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
+    const classAdvisorSigEndY = doc.y;
 
     // HOD
-    doc.x = sigX + colWidth;
+    doc.x = sigX + colWidth * 2;
     doc.y = sigDataY;
     doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text("", textOptions);
-    doc.font("Helvetica-Bold").text("VIRTUALLY APPROVED", textOptions);
-    const hodEndY = doc.y;
+    doc.text(`Date: ${odRequest.hodApprovedAt ? new Date(odRequest.hodApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
+    const hodSigEndY = doc.y;
 
-    // Student
-    doc.x = sigX + colWidth * 2;
+    // Dean (no name, no signature text)
+    doc.x = sigX + colWidth * 3;
     doc.y = sigDataY;
-    doc
-      .font("Helvetica")
-      .text(`Name: ${odRequest.student.name}`, textOptions);
-    doc.moveDown(0.5);
-    doc.text("Signature of the student", textOptions);
-    const studentEndY = doc.y;
+    doc.text("", textOptions);
+    const deanSigEndY = doc.y;
 
-    // Find the maximum Y position for consistent row height
-    const maxY = Math.max(classEndY, hodEndY, studentEndY);
-    const finalRowHeight = maxY - sigDataY + 10;
-
-    // Draw borders for signature section
-    doc.lineWidth(0.5);
-    doc.rect(sigX, sigDataY - sigRowHeight, sigWidth, sigRowHeight + finalRowHeight).stroke();
-
-    // Vertical lines
-    doc.moveTo(sigX + colWidth, sigDataY - sigRowHeight).lineTo(sigX + colWidth, sigDataY + finalRowHeight).stroke();
-    doc.moveTo(sigX + colWidth * 2, sigDataY - sigRowHeight).lineTo(sigX + colWidth * 2, sigDataY + finalRowHeight).stroke();
+    // No borders for signature section
+    // ... existing code ...
 
     doc.end();
 
@@ -1503,5 +1491,8 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     throw error;
   }
 };
+
+// Serve brochure files statically
+router.use('/uploads/brochures', express.static(path.join(__dirname, '../uploads/brochures')));
 
 module.exports = router;

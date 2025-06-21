@@ -37,6 +37,7 @@ const ODRequestForm = () => {
   });
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [brochureFile, setBrochureFile] = useState(null);
 
   const handleChange = (e) => {
     setFormData({
@@ -59,25 +60,68 @@ const ODRequestForm = () => {
     });
   };
 
+  const handleBrochureChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+      if (!allowedTypes.includes(file.type)) {
+        setError("Only PDF, JPG, and PNG files are allowed for brochure.");
+        setBrochureFile(null);
+        return;
+      }
+      if (file.size > 1 * 1024 * 1024) {
+        setError("Brochure file size must be less than 1MB.");
+        setBrochureFile(null);
+        return;
+      }
+      setError("");
+      setBrochureFile(file);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setSuccess("");
 
+    // Frontend validation for required fields
+    if (
+      !formData.eventName ||
+      !formData.eventDate ||
+      !formData.startDate ||
+      !formData.endDate ||
+      !formData.reason
+    ) {
+      setError("Please fill all required fields.");
+      return;
+    }
+
     try {
+      const form = new FormData();
+      Object.entries(formData).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          // Convert Date objects to ISO strings
+          if (value instanceof Date && !isNaN(value)) {
+            form.append(key, value.toISOString());
+          } else {
+            form.append(key, value);
+          }
+        }
+      });
+      if (brochureFile) {
+        form.append("brochure", brochureFile);
+      }
+      form.append("classAdvisor", user.facultyAdvisor);
       const response = await axios.post(
         "http://localhost:5000/api/od-requests",
-        {
-          ...formData,
-          classAdvisor: user.facultyAdvisor,
-        },
+        form,
         {
           headers: {
             "x-auth-token": localStorage.getItem("token"),
+            "Content-Type": "multipart/form-data",
           },
         }
       );
-
       setSuccess("OD request submitted successfully");
       setFormData({
         eventName: "",
@@ -89,6 +133,7 @@ const ODRequestForm = () => {
         startTime: null,
         endTime: null,
       });
+      setBrochureFile(null);
     } catch (err) {
       setError(err.response?.data?.message || "Error submitting OD request");
     }
@@ -212,6 +257,18 @@ const ODRequestForm = () => {
                 multiline
                 rows={4}
                 required
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" gutterBottom>
+                Upload Event Brochure (PDF/JPG/PNG, max 1MB)
+              </Typography>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleBrochureChange}
+                style={{ marginBottom: '1rem' }}
               />
             </Grid>
 

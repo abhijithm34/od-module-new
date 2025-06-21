@@ -233,6 +233,7 @@ const ODRequestList = () => {
                 <TableCell>Class Advisor</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Proof Verification Status</TableCell>
+                <TableCell>Brochure</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -259,6 +260,18 @@ const ODRequestList = () => {
                   </TableCell>
                   <TableCell>
                     {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
+                  </TableCell>
+                  <TableCell>
+                    {request.brochure && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => window.open(`http://localhost:5000/${request.brochure}`, '_blank')}
+                        sx={{ ml: 1 }}
+                      >
+                        View Brochure
+                      </Button>
+                    )}
                   </TableCell>
                   <TableCell>
                     {request.status === "approved_by_hod" && !request.proofSubmitted && (

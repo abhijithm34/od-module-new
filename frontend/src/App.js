@@ -17,7 +17,6 @@ import ODRequestForm from "./components/ODRequestForm";
 import ODRequestList from "./components/ODRequestList";
 import FacultyODRequestList from "./components/FacultyODRequestList";
 import HODDashboard from "./components/HODDashboard";
-import AdminDashboard from "./components/AdminDashboard";
 import LandingPage from "./components/LandingPage";
 import { useAuth } from "./contexts/AuthContext";
 import PrivateRoute from "./components/PrivateRoute";
@@ -95,7 +94,7 @@ const App = () => {
                 path="/admin/dashboard"
                 element={
                   <ProtectedRoute allowedRoles={["admin"]}>
-                    <AdminDashboard />
+                    <AdminManagement />
                   </ProtectedRoute>
                 }
               />

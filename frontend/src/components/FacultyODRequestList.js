@@ -220,6 +220,7 @@ const FacultyODRequestList = () => {
                 <TableCell>Reason</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Proof Verification Status</TableCell>
+                <TableCell>Brochure</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -246,6 +247,18 @@ const FacultyODRequestList = () => {
                       getProofVerificationChip(request.proofVerified)
                     ) : (
                       <Chip label="NOT SUBMITTED" color="default" size="small" />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {request.brochure && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => window.open(`http://localhost:5000/${request.brochure}`, '_blank')}
+                        sx={{ ml: 1 }}
+                      >
+                        View Brochure
+                      </Button>
                     )}
                   </TableCell>
                   <TableCell>

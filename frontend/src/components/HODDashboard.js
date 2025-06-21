@@ -196,6 +196,7 @@ const HODDashboard = () => {
                 <TableCell>Advisor Comment</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Proof Verification Status</TableCell>
+                <TableCell>Brochure</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -220,6 +221,18 @@ const HODDashboard = () => {
                   <TableCell>{getStatusChip(request.status)}</TableCell>
                   <TableCell>
                     {getProofVerificationChip(request.proofSubmitted, request.proofVerified)}
+                  </TableCell>
+                  <TableCell>
+                    {request.brochure && (
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={() => window.open(`http://localhost:5000/${request.brochure}`, '_blank')}
+                        sx={{ ml: 1 }}
+                      >
+                        View Brochure
+                      </Button>
+                    )}
                   </TableCell>
                   <TableCell>
                     {(request.status === "approved_by_advisor" || request.status === "forwarded_to_hod") && (

@@ -141,6 +141,18 @@ const odRequestSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    brochure: {
+      type: String, // Path to the uploaded event brochure
+      default: null,
+    },
+    advisorApprovedAt: {
+      type: Date,
+      default: null,
+    },
+    hodApprovedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
