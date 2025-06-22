@@ -13,7 +13,10 @@ const {
 const ODRequest = require("../models/ODRequest");
 const User = require("../models/User");
 const multer = require("multer");
-const { sendODRequestNotification, sendProofVerificationNotification } = require("../utils/emailService");
+const {
+  sendODRequestNotification,
+  sendProofVerificationNotification,
+} = require("../utils/emailService");
 
 // Helper function to draw a table row with cell content (no borders drawn by this function)
 function drawTableRowContent(
@@ -53,14 +56,14 @@ function drawTableRowContent(
 // Configure multer for file upload
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = 'uploads/proofs';
+    const dir = "uploads/proofs";
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     cb(null, dir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
@@ -69,7 +72,9 @@ const upload = multer({
   limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
   fileFilter: function (req, file, cb) {
     const filetypes = /jpeg|jpg|png|pdf/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = filetypes.test(
+      path.extname(file.originalname).toLowerCase()
+    );
     const mimetype = filetypes.test(file.mimetype);
 
     if (mimetype && extname) {
@@ -83,14 +88,14 @@ const upload = multer({
 // Configure multer for file upload
 const brochureStorage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = 'uploads/brochures';
+    const dir = "uploads/brochures";
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     cb(null, dir);
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
@@ -99,7 +104,9 @@ const brochureUpload = multer({
   limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
   fileFilter: function (req, file, cb) {
     const filetypes = /jpeg|jpg|png|pdf/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const extname = filetypes.test(
+      path.extname(file.originalname).toLowerCase()
+    );
     const mimetype = filetypes.test(file.mimetype);
     if (mimetype && extname) {
       return cb(null, true);
@@ -116,21 +123,38 @@ router.post(
   "/",
   protect,
   student,
-  brochureUpload.single('brochure'),
+  brochureUpload.single("brochure"),
   asyncHandler(async (req, res) => {
     try {
-      const { eventName, eventDate, startDate, endDate, timeType, startTime, endTime, reason, notifyFaculty } = req.body;
-      
+      const {
+        eventName,
+        eventDate,
+        startDate,
+        endDate,
+        timeType,
+        startTime,
+        endTime,
+        reason,
+        notifyFaculty,
+      } = req.body;
+
       // Get the student's details
       const student = await User.findById(req.user._id);
       if (!student || !student.facultyAdvisor) {
-        return res.status(400).json({ message: 'Student must have a faculty advisor assigned' });
+        return res
+          .status(400)
+          .json({ message: "Student must have a faculty advisor assigned" });
       }
 
       // Get HOD details
-      const hod = await User.findOne({ role: 'hod', department: student.department });
+      const hod = await User.findOne({
+        role: "hod",
+        department: student.department,
+      });
       if (!hod) {
-        return res.status(400).json({ message: 'HOD not found for the department' });
+        return res
+          .status(400)
+          .json({ message: "HOD not found for the department" });
       }
 
       const odRequest = new ODRequest({
@@ -140,8 +164,8 @@ router.post(
         startDate,
         endDate,
         timeType,
-        startTime: timeType === 'particularHours' ? startTime : undefined,
-        endTime: timeType === 'particularHours' ? endTime : undefined,
+        startTime: timeType === "particularHours" ? startTime : undefined,
+        endTime: timeType === "particularHours" ? endTime : undefined,
         reason,
         facultyAdvisor: student.facultyAdvisor,
         classAdvisor: student.facultyAdvisor, // Using faculty advisor as class advisor
@@ -156,7 +180,7 @@ router.post(
 
       // Get faculty advisor details
       const facultyAdvisor = await User.findById(student.facultyAdvisor);
-      
+
       // Send email notification to faculty advisor
       await sendODRequestNotification(
         facultyAdvisor.email,
@@ -164,7 +188,7 @@ router.post(
           name: req.user.name,
           registerNo: req.user.registerNo,
           department: req.user.department,
-          year: req.user.year
+          year: req.user.year,
         },
         {
           eventName,
@@ -174,14 +198,16 @@ router.post(
           timeType,
           startTime,
           endTime,
-          reason
+          reason,
         }
       );
 
       res.status(201).json(odRequest);
     } catch (error) {
-      console.error('Error creating OD request:', error);
-      res.status(500).json({ message: 'Error creating OD request', error: error.message });
+      console.error("Error creating OD request:", error);
+      res
+        .status(500)
+        .json({ message: "Error creating OD request", error: error.message });
     }
   })
 );
@@ -267,8 +293,11 @@ router.put(
 
     // Check if approved PDF already exists, if not generate it
     let approvedPDFPath = updatedRequest.approvedPDFPath;
-    const expectedApprovedPath = path.resolve('uploads/od_letters', `approved_${updatedRequest._id}.pdf`);
-    
+    const expectedApprovedPath = path.resolve(
+      "uploads/od_letters",
+      `approved_${updatedRequest._id}.pdf`
+    );
+
     // Check if the stored path exists, or if the expected file exists on disk
     if (!approvedPDFPath || !fs.existsSync(approvedPDFPath)) {
       if (fs.existsSync(expectedApprovedPath)) {
@@ -280,7 +309,7 @@ router.put(
         // File doesn't exist, generate new one
         approvedPDFPath = expectedApprovedPath;
         await generateApprovedPDF(updatedRequest, approvedPDFPath);
-        
+
         // Save the path to the database
         updatedRequest.approvedPDFPath = approvedPDFPath;
         await updatedRequest.save();
@@ -290,30 +319,32 @@ router.put(
     // Send email notification to faculty (class advisor and optionally notifyFaculty)
     const facultyEmails = [odRequest.facultyAdvisor.email];
     if (odRequest.notifyFaculty && odRequest.notifyFaculty.length > 0) {
-        const notifiedFacultyEmails = await User.find({ _id: { $in: odRequest.notifyFaculty } }).select('email');
-        facultyEmails.push(...notifiedFacultyEmails.map(f => f.email));
+      const notifiedFacultyEmails = await User.find({
+        _id: { $in: odRequest.notifyFaculty },
+      }).select("email");
+      facultyEmails.push(...notifiedFacultyEmails.map((f) => f.email));
     }
 
     await sendProofVerificationNotification(
-        facultyEmails,
-        {
-            name: odRequest.student.name,
-            registerNo: odRequest.student.registerNo,
-            department: odRequest.student.department,
-            year: odRequest.student.year,
-        },
-        {
-            eventName: odRequest.eventName,
-            eventDate: odRequest.eventDate,
-            startDate: odRequest.startDate,
-            endDate: odRequest.endDate,
-            timeType: odRequest.timeType,
-            startTime: odRequest.startTime,
-            endTime: odRequest.endTime,
-            reason: odRequest.reason,
-        },
-        odRequest.proofDocument,
-        approvedPDFPath
+      facultyEmails,
+      {
+        name: odRequest.student.name,
+        registerNo: odRequest.student.registerNo,
+        department: odRequest.student.department,
+        year: odRequest.student.year,
+      },
+      {
+        eventName: odRequest.eventName,
+        eventDate: odRequest.eventDate,
+        startDate: odRequest.startDate,
+        endDate: odRequest.endDate,
+        timeType: odRequest.timeType,
+        startTime: odRequest.startTime,
+        endTime: odRequest.endTime,
+        reason: odRequest.reason,
+      },
+      odRequest.proofDocument,
+      approvedPDFPath
     );
 
     res.json(updatedRequest);
@@ -375,7 +406,7 @@ router.post(
   "/:id/submit-proof",
   protect,
   student,
-  upload.single('proofDocument'),
+  upload.single("proofDocument"),
   asyncHandler(async (req, res) => {
     const odRequest = await ODRequest.findById(req.params.id);
 
@@ -468,7 +499,6 @@ router.get(
   })
 );
 
-
 // @desc    Faculty approve OD request (with PDF generation)
 // @route   PUT /api/od-requests/:id/hod-approve
 // @access  Private/HOD
@@ -506,15 +536,18 @@ router.put(
     odRequest.hodApprovedAt = new Date();
 
     const updatedRequest = await odRequest.save();
-    
+
     // Generate approved PDF when HOD approves the request
-    const approvedPDFPath = path.resolve('uploads/od_letters', `approved_${updatedRequest._id}.pdf`);
+    const approvedPDFPath = path.resolve(
+      "uploads/od_letters",
+      `approved_${updatedRequest._id}.pdf`
+    );
     await generateApprovedPDF(updatedRequest, approvedPDFPath);
-    
+
     // Save the path to the database
     updatedRequest.approvedPDFPath = approvedPDFPath;
     await updatedRequest.save();
-    
+
     console.log("OD Request status updated by HOD:", updatedRequest);
     res.json(updatedRequest);
   })
@@ -533,7 +566,7 @@ router.put(
       .populate("classAdvisor", "name")
       .populate("hod", "name")
       .populate("notifyFaculty", "name email");
-    
+
     console.log("HOD rejecting request with ID:", req.params.id);
 
     if (!odRequest) {
@@ -613,6 +646,17 @@ router.get(
 
     // Set initial font and size for general text
     doc.font("Helvetica").fontSize(9);
+    const logoPath = path.join(__dirname, "../assets/anna_univ_logo.png");
+    if (fs.existsSync(logoPath)) {
+      const logoWidth = 60;
+      const logoHeight = 60;
+      const leftX = doc.page.margins.left;
+      doc.image(logoPath, leftX, doc.page.margins.top + 10, {
+        width: logoWidth,
+        height: logoHeight,
+      });
+      doc.moveDown(2.5); // Add space after logo
+    }
 
     // University Header
     doc
@@ -807,7 +851,8 @@ router.get(
         purposeRowHeight
       );
     }
-    purposeCurrentY += purposeRowHeight;
+    purposeCurrentY += purposeRowHeight + 20;
+    doc.y = purposeCurrentY;
 
     doc.moveDown(2); // More space before signatures
 
@@ -838,9 +883,7 @@ router.get(
     // Student
     doc.x = sigX;
     doc.y = sigDataY;
-    doc
-      .font("Helvetica")
-      .text(`Name: ${odRequest.student.name}`, textOptions);
+    doc.font("Helvetica").text(`Name: ${odRequest.student.name}`, textOptions);
     const studentSigEndY = doc.y;
 
     // Class Advisor
@@ -850,7 +893,14 @@ router.get(
       .font("Helvetica")
       .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text(`Date: ${odRequest.advisorApprovedAt ? new Date(odRequest.advisorApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.text(
+      `Date: ${
+        odRequest.advisorApprovedAt
+          ? new Date(odRequest.advisorApprovedAt).toLocaleDateString()
+          : "-"
+      }`,
+      textOptions
+    );
     doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
     const classAdvisorSigEndY = doc.y;
 
@@ -859,7 +909,14 @@ router.get(
     doc.y = sigDataY;
     doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text(`Date: ${odRequest.hodApprovedAt ? new Date(odRequest.hodApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.text(
+      `Date: ${
+        odRequest.hodApprovedAt
+          ? new Date(odRequest.hodApprovedAt).toLocaleDateString()
+          : "-"
+      }`,
+      textOptions
+    );
     doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
     const hodSigEndY = doc.y;
 
@@ -1004,9 +1061,12 @@ router.get(
     // Check if approved PDF already exists, if not generate it
     let approvedPDFPath = odRequest.approvedPDFPath;
     if (!approvedPDFPath || !fs.existsSync(approvedPDFPath)) {
-      approvedPDFPath = path.resolve('uploads/od_letters', `approved_${odRequest._id}.pdf`);
+      approvedPDFPath = path.resolve(
+        "uploads/od_letters",
+        `approved_${odRequest._id}.pdf`
+      );
       await generateApprovedPDF(odRequest, approvedPDFPath);
-      
+
       // Save the path to the database
       odRequest.approvedPDFPath = approvedPDFPath;
       await odRequest.save();
@@ -1018,7 +1078,7 @@ router.get(
       "Content-Disposition",
       `attachment; filename=od_request_${odRequest._id}.pdf`
     );
-    
+
     const fileStream = fs.createReadStream(approvedPDFPath);
     fileStream.pipe(res);
   })
@@ -1038,19 +1098,19 @@ router.get(
 
     // Find requests that are either forwarded to admin or pending for more than 30 seconds
     const thirtySecondsAgo = new Date(Date.now() - 30000);
-    
+
     // First, update any pending requests that are older than 30 seconds
     await ODRequest.updateMany(
       {
         status: "pending",
-        lastStatusChangeAt: { $lt: thirtySecondsAgo }
+        lastStatusChangeAt: { $lt: thirtySecondsAgo },
       },
       {
         $set: {
           status: "forwarded_to_admin",
           forwardedToAdminAt: Date.now(),
-          lastStatusChangeAt: Date.now()
-        }
+          lastStatusChangeAt: Date.now(),
+        },
       }
     );
 
@@ -1060,19 +1120,19 @@ router.get(
         { status: "forwarded_to_admin" },
         {
           status: "pending",
-          lastStatusChangeAt: { $lt: thirtySecondsAgo }
-        }
-      ]
+          lastStatusChangeAt: { $lt: thirtySecondsAgo },
+        },
+      ],
     };
 
     // If roll number is provided in query params, add it to the query
     if (req.query.rollNumber) {
       // First find the student with the given roll number
-      const student = await User.findOne({ 
+      const student = await User.findOne({
         registerNo: req.query.rollNumber,
-        role: 'student'
+        role: "student",
       });
-      
+
       if (student) {
         query.student = student._id;
       } else {
@@ -1128,7 +1188,7 @@ router.put(
 // Middleware to check for unresponded requests
 const checkUnrespondedRequests = async () => {
   const thirtySecondsAgo = new Date(Date.now() - 30000);
-  
+
   const unrespondedRequests = await ODRequest.find({
     status: "pending",
     lastStatusChangeAt: { $lt: thirtySecondsAgo },
@@ -1161,7 +1221,7 @@ router.get(
       { $match: { role: "student" } },
       { $group: { _id: "$year", count: { $sum: 1 } } },
       { $project: { year: "$_id", count: 1, _id: 0 } },
-      { $sort: { year: 1 } }
+      { $sort: { year: 1 } },
     ]);
 
     res.json(stats);
@@ -1211,8 +1271,12 @@ router.get(
     doc.text(`Year: ${odRequest.student.year}`);
     doc.moveDown();
     doc.text(`Event Name: ${odRequest.eventName}`);
-    doc.text(`Event Date: ${new Date(odRequest.eventDate).toLocaleDateString()}`);
-    doc.text(`Start Date: ${new Date(odRequest.startDate).toLocaleDateString()}`);
+    doc.text(
+      `Event Date: ${new Date(odRequest.eventDate).toLocaleDateString()}`
+    );
+    doc.text(
+      `Start Date: ${new Date(odRequest.startDate).toLocaleDateString()}`
+    );
     doc.text(`End Date: ${new Date(odRequest.endDate).toLocaleDateString()}`);
     doc.moveDown();
     doc.text(`Reason: ${odRequest.reason}`);
@@ -1238,7 +1302,7 @@ const generateODLetterPDF = async (odRequest, outputPath) => {
     doc.pipe(stream);
 
     // Add content to PDF
-    doc.fontSize(16).text('On-Duty Request Letter', { align: 'center' });
+    doc.fontSize(16).text("On-Duty Request Letter", { align: "center" });
     doc.moveDown();
     doc.fontSize(12).text(`Student Name: ${odRequest.student.name}`);
     doc.text(`Register Number: ${odRequest.student.registerNo}`);
@@ -1246,17 +1310,23 @@ const generateODLetterPDF = async (odRequest, outputPath) => {
     doc.text(`Year: ${odRequest.student.year}`);
     doc.moveDown();
     doc.text(`Event Name: ${odRequest.eventName}`);
-    doc.text(`Event Date: ${new Date(odRequest.eventDate).toLocaleDateString()}`);
-    doc.text(`Start Date: ${new Date(odRequest.startDate).toLocaleDateString()}`);
+    doc.text(
+      `Event Date: ${new Date(odRequest.eventDate).toLocaleDateString()}`
+    );
+    doc.text(
+      `Start Date: ${new Date(odRequest.startDate).toLocaleDateString()}`
+    );
     doc.text(`End Date: ${new Date(odRequest.endDate).toLocaleDateString()}`);
-    if (odRequest.timeType === 'particularHours') {
+    if (odRequest.timeType === "particularHours") {
       doc.text(`Start Time: ${odRequest.startTime}`);
       doc.text(`End Time: ${odRequest.endTime}`);
     }
     doc.moveDown();
     doc.text(`Reason: ${odRequest.reason}`);
     doc.moveDown();
-    doc.text('This is to certify that the above student was on official duty during the specified period.');
+    doc.text(
+      "This is to certify that the above student was on official duty during the specified period."
+    );
     doc.moveDown();
     doc.text(`Verified by: ${odRequest.facultyAdvisor.name}`);
     doc.text(`Date: ${new Date().toLocaleDateString()}`);
@@ -1264,19 +1334,19 @@ const generateODLetterPDF = async (odRequest, outputPath) => {
     doc.end();
 
     return new Promise((resolve, reject) => {
-      stream.on('finish', resolve);
-      stream.on('error', reject);
+      stream.on("finish", resolve);
+      stream.on("error", reject);
     });
   } catch (error) {
-    console.error('Error generating OD letter:', error);
+    console.error("Error generating OD letter:", error);
     throw error;
   }
 };
 
 // Helper function to ensure directories exist
 const ensureDirectoriesExist = () => {
-  const dirs = ['uploads/proofs', 'uploads/od_letters'];
-  dirs.forEach(dir => {
+  const dirs = ["uploads/proofs", "uploads/od_letters"];
+  dirs.forEach((dir) => {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
@@ -1314,6 +1384,18 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     const doc = new PDFDocument({ margin: 30 });
     const stream = fs.createWriteStream(outputPath);
     doc.pipe(stream);
+
+    const logoPath = path.join(__dirname, "../assets/anna_univ_logo.png");
+    if (fs.existsSync(logoPath)) {
+      const logoWidth = 60;
+      const logoHeight = 60;
+      const leftX = doc.page.margins.left;
+      doc.image(logoPath, leftX, doc.page.margins.top + 10, {
+        width: logoWidth,
+        height: logoHeight,
+      });
+      doc.moveDown(2.5); // Add space after logo
+    }
 
     // Page border
     doc
@@ -1416,6 +1498,8 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     } else {
       drawLabeledRow("No. of OD Full days/Half Days Availed:", "Full Day");
     }
+    currentY += rowHeight + 20;
+    doc.y = currentY;
 
     doc.moveDown(2); // Add extra space before signature section
 
@@ -1446,9 +1530,7 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     // Student
     doc.x = sigX;
     doc.y = sigDataY;
-    doc
-      .font("Helvetica")
-      .text(`Name: ${odRequest.student.name}`, textOptions);
+    doc.font("Helvetica").text(`Name: ${odRequest.student.name}`, textOptions);
     const studentSigEndY = doc.y;
 
     // Class Advisor
@@ -1458,7 +1540,14 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
       .font("Helvetica")
       .text(`Name: ${odRequest.classAdvisor.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text(`Date: ${odRequest.advisorApprovedAt ? new Date(odRequest.advisorApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.text(
+      `Date: ${
+        odRequest.advisorApprovedAt
+          ? new Date(odRequest.advisorApprovedAt).toLocaleDateString()
+          : "-"
+      }`,
+      textOptions
+    );
     doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
     const classAdvisorSigEndY = doc.y;
 
@@ -1467,7 +1556,14 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     doc.y = sigDataY;
     doc.font("Helvetica").text(`Name: ${odRequest.hod.name}`, textOptions);
     doc.moveDown(0.5);
-    doc.text(`Date: ${odRequest.hodApprovedAt ? new Date(odRequest.hodApprovedAt).toLocaleDateString() : '-'}`, textOptions);
+    doc.text(
+      `Date: ${
+        odRequest.hodApprovedAt
+          ? new Date(odRequest.hodApprovedAt).toLocaleDateString()
+          : "-"
+      }`,
+      textOptions
+    );
     doc.font("Helvetica-Bold").text("DIGITALLY SIGNED", textOptions);
     const hodSigEndY = doc.y;
 
@@ -1483,16 +1579,19 @@ const generateApprovedPDF = async (odRequest, outputPath) => {
     doc.end();
 
     return new Promise((resolve, reject) => {
-      stream.on('finish', resolve);
-      stream.on('error', reject);
+      stream.on("finish", resolve);
+      stream.on("error", reject);
     });
   } catch (error) {
-    console.error('Error generating approved PDF:', error);
+    console.error("Error generating approved PDF:", error);
     throw error;
   }
 };
 
 // Serve brochure files statically
-router.use('/uploads/brochures', express.static(path.join(__dirname, '../uploads/brochures')));
+router.use(
+  "/uploads/brochures",
+  express.static(path.join(__dirname, "../uploads/brochures"))
+);
 
 module.exports = router;
