@@ -1,6 +1,8 @@
 const express = require("express");
 const Setting = require("../models/Setting");
 const router = express.Router();
+const { protect } = require("../middleware/authMiddleware");
+router.use(protect);
 // Only import, do NOT define inline
 
 // GET sender email
@@ -47,6 +49,101 @@ router.put("/sender-email-password", async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Failed to update sender email password" });
   }
+});
+
+// GET all event types
+router.get("/event-types", async (req, res) => {
+  try {
+    let setting = await Setting.findOne({ key: "eventTypes" });
+    let eventTypes = setting ? JSON.parse(setting.value) : ["hackathon"];
+    res.json({ eventTypes });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch event types" });
+  }
+});
+
+// POST add a new event type (admin only)
+router.post("/event-types", async (req, res) => {
+  // TODO: Replace with real admin check
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only admin can add event types" });
+  }
+  const { eventType } = req.body;
+  if (!eventType) return res.status(400).json({ message: "Event type required" });
+  let setting = await Setting.findOne({ key: "eventTypes" });
+  let eventTypes = setting ? JSON.parse(setting.value) : ["hackathon"];
+  if (eventTypes.includes(eventType)) {
+    return res.status(400).json({ message: "Event type already exists" });
+  }
+  eventTypes.push(eventType);
+  await Setting.findOneAndUpdate(
+    { key: "eventTypes" },
+    { value: JSON.stringify(eventTypes) },
+    { upsert: true, new: true }
+  );
+  res.json({ eventTypes });
+});
+
+// POST student requests a new event type
+router.post("/event-type-requests", async (req, res) => {
+  const { eventType } = req.body;
+  if (!eventType) return res.status(400).json({ message: "Event type required" });
+  let setting = await Setting.findOne({ key: "eventTypeRequests" });
+  let requests = setting ? JSON.parse(setting.value) : [];
+  requests.push({ eventType, requestedBy: req.user?._id || null, date: new Date() });
+  await Setting.findOneAndUpdate(
+    { key: "eventTypeRequests" },
+    { value: JSON.stringify(requests) },
+    { upsert: true, new: true }
+  );
+  res.json({ message: "Request submitted" });
+});
+
+// GET all event type requests (admin only)
+router.get("/event-type-requests", async (req, res) => {
+  // TODO: Replace with real admin check
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only admin can view event type requests" });
+  }
+  let setting = await Setting.findOne({ key: "eventTypeRequests" });
+  let requests = setting ? JSON.parse(setting.value) : [];
+  res.json({ requests });
+});
+
+// DELETE an event type request (admin only)
+router.delete("/event-type-requests", async (req, res) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only admin can delete event type requests" });
+  }
+  const { eventType } = req.body;
+  if (!eventType) return res.status(400).json({ message: "Event type required" });
+  let setting = await Setting.findOne({ key: "eventTypeRequests" });
+  let requests = setting ? JSON.parse(setting.value) : [];
+  requests = requests.filter((req) => req.eventType !== eventType);
+  await Setting.findOneAndUpdate(
+    { key: "eventTypeRequests" },
+    { value: JSON.stringify(requests) },
+    { upsert: true, new: true }
+  );
+  res.json({ message: "Request deleted" });
+});
+
+// DELETE an event type (admin only)
+router.delete("/event-types", async (req, res) => {
+  if (!req.user || req.user.role !== "admin") {
+    return res.status(403).json({ message: "Only admin can delete event types" });
+  }
+  const { eventType } = req.body;
+  if (!eventType) return res.status(400).json({ message: "Event type required" });
+  let setting = await Setting.findOne({ key: "eventTypes" });
+  let eventTypes = setting ? JSON.parse(setting.value) : [];
+  eventTypes = eventTypes.filter((et) => et !== eventType);
+  await Setting.findOneAndUpdate(
+    { key: "eventTypes" },
+    { value: JSON.stringify(eventTypes) },
+    { upsert: true, new: true }
+  );
+  res.json({ eventTypes });
 });
 
 module.exports = router;
