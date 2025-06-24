@@ -191,6 +191,12 @@ const ODRequestList = () => {
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     if (file) {
+      if (file.type !== "application/pdf") {
+        setError("Only PDF files are allowed for proof submission.");
+        setSelectedFile(null);
+        return;
+      }
+      setError("");
       setSelectedFile(file);
     }
   };
@@ -326,7 +332,7 @@ const ODRequestList = () => {
             <Box sx={{ mt: 2 }}>
               <input
                 type="file"
-                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={handleFileChange}
                 style={{ marginBottom: '1rem' }}
               />
