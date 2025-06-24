@@ -63,9 +63,9 @@ const ODRequestForm = () => {
   const handleBrochureChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      const allowedTypes = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+      const allowedTypes = ["application/pdf"];
       if (!allowedTypes.includes(file.type)) {
-        setError("Only PDF, JPG, and PNG files are allowed for brochure.");
+        setError("Only PDF files are allowed for brochure.");
         setBrochureFile(null);
         return;
       }
@@ -262,11 +262,11 @@ const ODRequestForm = () => {
 
             <Grid item xs={12}>
               <Typography variant="subtitle1" gutterBottom>
-                Upload Event Brochure (PDF/JPG/PNG, max 1MB)
+                Upload Event Brochure (PDF, max 1MB)
               </Typography>
               <input
                 type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
                 onChange={handleBrochureChange}
                 style={{ marginBottom: '1rem' }}
               />
