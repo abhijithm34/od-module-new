@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Typography,
@@ -18,6 +18,10 @@ import {
   Grid,
   Tooltip,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import { Search as SearchIcon } from "@mui/icons-material";
 import { Pie } from "react-chartjs-2";
@@ -31,6 +35,12 @@ import {
 import axios from "axios";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+//import { DateRangePicker } from "@mui/x-date-pickers/DateRangePicker";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import dayjs from "dayjs";
+import { isAfter, isBefore, isEqual, startOfDay, endOfDay } from "date-fns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
 // Register ChartJS components
 ChartJS.register(ArcElement, ChartTooltip, Legend, Title);
@@ -45,6 +55,25 @@ const AdminManagement = () => {
   const [searchField, setSearchField] = useState("reason");
   const [studentStats, setStudentStats] = useState([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [senderEmail, setSenderEmail] = useState("");
+  const [senderEmailPassword, setSenderEmailPassword] = useState("");
+  const [senderEmailError, setSenderEmailError] = useState("");
+  const [senderEmailPasswordError, setSenderEmailPasswordError] = useState("");
+  const [senderEmailLoading, setSenderEmailLoading] = useState(false);
+  const senderEmailInputRef = useRef();
+
+  // Popup state
+  const [openSenderDialog, setOpenSenderDialog] = useState(false);
+
+  // New filter states
+  const [filterStudent, setFilterStudent] = useState("");
+  const [filterRegno, setFilterRegno] = useState("");
+  const [filterYear, setFilterYear] = useState("");
+  const [filterAcademicYear, setFilterAcademicYear] = useState("");
+  const [filterEvent, setFilterEvent] = useState("");
+  // Add new filter states for 1st/2nd/3rd/4th year
+  const [filterYearLevel, setFilterYearLevel] = useState("");
+  const [academicYearRange, setAcademicYearRange] = useState([null, null]);
 
   const fetchStudentStats = async () => {
     try {
@@ -87,6 +116,29 @@ const AdminManagement = () => {
     setLoading(false);
   };
 
+  // Fetch sender email on mount
+  useEffect(() => {
+    const fetchSenderEmail = async () => {
+      setSenderEmailLoading(true);
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/api/settings/sender-email`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          }
+        );
+        setSenderEmail(res.data.senderEmail);
+        setSenderEmailError("");
+      } catch (err) {
+        setSenderEmailError("Failed to fetch sender email");
+      }
+      setSenderEmailLoading(false);
+    };
+    fetchSenderEmail();
+  }, []);
+
   useEffect(() => {
     fetchStudentStats();
     fetchAllRequests();
@@ -101,44 +153,107 @@ const AdminManagement = () => {
   };
 
   const filteredRequests = requests.filter((request) => {
-    if (!searchQuery) return true;
-    const searchValue = searchQuery.toLowerCase();
-    switch (searchField) {
-      case "student":
-        return request.student?.name?.toLowerCase().includes(searchValue);
-      case "regno":
-        return request.student?.registerNo?.toLowerCase().includes(searchValue);
-      case "event":
-        return request.eventName?.toLowerCase().includes(searchValue);
-      case "year":
-        // Match both numeric and ordinal (e.g., '3', '3rd', 'third')
-        const yearStr = (request.year || "").toLowerCase();
-        return (
-          yearStr.includes(searchValue) ||
-          (searchValue === "1st" && yearStr === "1") ||
-          (searchValue === "2nd" && yearStr === "2") ||
-          (searchValue === "3rd" && yearStr === "3") ||
-          (searchValue === "4th" && yearStr === "4")
-        );
-      case "academicYear":
-        // Check eventDate year, startDate year, or endDate year
-        const eventYear = request.eventDate
-          ? new Date(request.eventDate).getFullYear().toString()
-          : "";
-        const startYear = request.startDate
-          ? new Date(request.startDate).getFullYear().toString()
-          : "";
-        const endYear = request.endDate
-          ? new Date(request.endDate).getFullYear().toString()
-          : "";
-        return (
-          eventYear.includes(searchValue) ||
-          startYear.includes(searchValue) ||
-          endYear.includes(searchValue)
-        );
-      default:
-        return true;
+    // Student Name
+    if (
+      filterStudent &&
+      !request.student?.name
+        ?.toLowerCase()
+        .includes(filterStudent.toLowerCase())
+    ) {
+      return false;
     }
+    // Register Number
+    if (
+      filterRegno &&
+      !request.student?.registerNo
+        ?.toLowerCase()
+        .includes(filterRegno.toLowerCase())
+    ) {
+      return false;
+    }
+    // Year (free text)
+    if (filterYear) {
+      const yearStr = (request.year || "").toLowerCase();
+      if (
+        !yearStr.includes(filterYear.toLowerCase()) &&
+        !(
+          (filterYear === "1st" && yearStr === "1") ||
+          (filterYear === "2nd" && yearStr === "2") ||
+          (filterYear === "3rd" && yearStr === "3") ||
+          (filterYear === "4th" && yearStr === "4")
+        )
+      ) {
+        return false;
+      }
+    }
+    // Year Level (dropdown)
+    if (
+      filterYearLevel &&
+      String(request.year) !== filterYearLevel &&
+      String(request.year) !==
+        (filterYearLevel === "1"
+          ? "1st"
+          : filterYearLevel === "2"
+          ? "2nd"
+          : filterYearLevel === "3"
+          ? "3rd"
+          : filterYearLevel === "4"
+          ? "4th"
+          : "")
+    ) {
+      return false;
+    }
+    // Academic Year
+    if (filterAcademicYear) {
+      const eventYear = request.eventDate
+        ? new Date(request.eventDate).getFullYear().toString()
+        : "";
+      const startYear = request.startDate
+        ? new Date(request.startDate).getFullYear().toString()
+        : "";
+      const endYear = request.endDate
+        ? new Date(request.endDate).getFullYear().toString()
+        : "";
+      if (
+        !eventYear.includes(filterAcademicYear) &&
+        !startYear.includes(filterAcademicYear) &&
+        !endYear.includes(filterAcademicYear)
+      ) {
+        return false;
+      }
+    }
+    // Event
+    if (
+      filterEvent &&
+      !request.eventName?.toLowerCase().includes(filterEvent.toLowerCase())
+    ) {
+      return false;
+    }
+
+    // Academic Year (date range)
+    if (academicYearRange[0] && academicYearRange[1]) {
+      const start = startOfDay(academicYearRange[0]);
+      const end = endOfDay(academicYearRange[1]);
+      // Check eventDate, startDate, endDate falls within range
+      const eventDate = request.eventDate ? new Date(request.eventDate) : null;
+      const startDate = request.startDate ? new Date(request.startDate) : null;
+      const endDate = request.endDate ? new Date(request.endDate) : null;
+      const inRange = (date) =>
+        date &&
+        (isAfter(date, start) || isEqual(date, start)) &&
+        (isBefore(date, end) || isEqual(date, end));
+      if (
+        !(
+          (eventDate && inRange(eventDate)) ||
+          (startDate && inRange(startDate)) ||
+          (endDate && inRange(endDate))
+        )
+      ) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   const handleForwardToHod = async (requestId) => {
@@ -359,7 +474,7 @@ const AdminManagement = () => {
       startY: tableStartY,
       margin: { left: margin, right: margin },
       didDrawPage: () => {
-        doc.setLineWidth(1);
+        doc.setLineWidth(0.5);
         doc.rect(
           margin,
           margin,
@@ -380,6 +495,63 @@ const AdminManagement = () => {
     doc.save("od-requests.pdf");
   };
 
+  // Open dialog
+  const handleOpenSenderDialog = () => {
+    setSenderEmailError("");
+    setSenderEmailPasswordError("");
+    setOpenSenderDialog(true);
+  };
+
+  // Close dialog
+  const handleCloseSenderDialog = () => {
+    setOpenSenderDialog(false);
+    setSenderEmailPassword("");
+  };
+
+  // Submit handler
+  const handleSenderDialogSubmit = async () => {
+    setSenderEmailLoading(true);
+    setSenderEmailError("");
+    setSenderEmailPasswordError("");
+    try {
+      // Update sender email
+      await axios.put(
+        `${API_BASE_URL}/api/settings/sender-email`,
+        { senderEmail },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+      // Update sender email password
+      await axios.put(
+        `${API_BASE_URL}/api/settings/sender-email-password`,
+        { senderEmailPassword },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+        }
+      );
+      setOpenSenderDialog(false);
+      setSenderEmailPassword("");
+    } catch (err) {
+      setSenderEmailError("Failed to update sender email or password");
+    }
+    setSenderEmailLoading(false);
+  };
+
+  // Add this function inside your AdminManagement component
+  const handleClearFilters = () => {
+    setFilterStudent("");
+    setFilterRegno("");
+    setFilterYear("");
+    setFilterYearLevel("");
+    setFilterAcademicYear("");
+    setFilterEvent("");
+  };
+
   if (loading || statsLoading) {
     return (
       <Box
@@ -394,194 +566,318 @@ const AdminManagement = () => {
   }
 
   return (
-    <Box p={3}>
-      <Typography variant="h4" gutterBottom>
-        Admin Management
-      </Typography>
+    <>
+      <Box p={3}>
+        <Typography variant="h4" gutterBottom>
+          Admin Management
+        </Typography>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: "100%" }}>
-            <Typography variant="h6" gutterBottom>
-              OD Requests by Year
-            </Typography>
-            <Box sx={{ height: 300, position: "relative" }}>
-              {odYears.length > 0 ? (
-                <Pie data={chartData} options={chartOptions} />
-              ) : (
-                <Alert severity="info">No OD request data available</Alert>
-              )}
-            </Box>
-            {/* Statistics summary below the pie chart */}
-            <Box sx={{ mt: 2 }}>
-              {odYears.length > 0 ? (
-                odYears.map((year, idx) => (
-                  <Typography key={year} variant="body1" gutterBottom>
-                    {`Year ${year}`}: {odCounts[idx]}
-                  </Typography>
-                ))
-              ) : (
-                <Alert severity="info">No statistics available</Alert>
-              )}
-            </Box>
-          </Paper>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: "100%" }}>
+              <Typography variant="h6" gutterBottom>
+                OD Requests by Year
+              </Typography>
+              <Box sx={{ height: 300, position: "relative" }}>
+                {odYears.length > 0 ? (
+                  <Pie data={chartData} options={chartOptions} />
+                ) : (
+                  <Alert severity="info">No OD request data available</Alert>
+                )}
+              </Box>
+              {/* Statistics summary below the pie chart */}
+              <Box sx={{ mt: 2 }}>
+                {odYears.length > 0 ? (
+                  odYears.map((year, idx) => (
+                    <Typography key={year} variant="body1" gutterBottom>
+                      {`Year ${year}`}: {odCounts[idx]}
+                    </Typography>
+                  ))
+                ) : (
+                  <Alert severity="info">No statistics available</Alert>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 2, height: "100%" }}>
+              <Typography variant="h6" gutterBottom>
+                OD Requests by Status
+              </Typography>
+              <Box sx={{ height: 300, position: "relative" }}>
+                {statusLabels.length > 0 ? (
+                  <Pie data={statusChartData} options={statusChartOptions} />
+                ) : (
+                  <Alert severity="info">
+                    No OD request status data available
+                  </Alert>
+                )}
+              </Box>
+              {/* Statistics summary below the pie chart */}
+              <Box sx={{ mt: 2 }}>
+                {statusLabels.length > 0 ? (
+                  statusLabels.map((label, idx) => (
+                    <Typography key={label} variant="body1" gutterBottom>
+                      {label}: {statusCounts[label]}
+                    </Typography>
+                  ))
+                ) : (
+                  <Alert severity="info">No statistics available</Alert>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
         </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 2, height: "100%" }}>
-            <Typography variant="h6" gutterBottom>
-              OD Requests by Status
-            </Typography>
-            <Box sx={{ height: 300, position: "relative" }}>
-              {statusLabels.length > 0 ? (
-                <Pie data={statusChartData} options={statusChartOptions} />
-              ) : (
-                <Alert severity="info">
-                  No OD request status data available
-                </Alert>
-              )}
-            </Box>
-            {/* Statistics summary below the pie chart */}
-            <Box sx={{ mt: 2 }}>
-              {statusLabels.length > 0 ? (
-                statusLabels.map((label, idx) => (
-                  <Typography key={label} variant="body1" gutterBottom>
-                    {label}: {statusCounts[label]}
-                  </Typography>
-                ))
-              ) : (
-                <Alert severity="info">No statistics available</Alert>
-              )}
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+        <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
+          All OD Requests
+        </Typography>
 
-      <Typography variant="h5" sx={{ mt: 4, mb: 2 }}>
-        All OD Requests
-      </Typography>
-
-      <Box display="flex" justifyContent="flex-end" mb={2}>
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={handleDownloadPDF}
-        >
-          Download PDF
-        </Button>
-      </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {error}
-        </Alert>
-      )}
-
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
+        <Box display="flex" justifyContent="flex-end" mb={2}>
+          <Button
             variant="outlined"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={handleSearch}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon />
-                </InputAdornment>
-              ),
-            }}
-          />
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <TextField
-            select
-            fullWidth
-            value={searchField}
-            onChange={handleSearchFieldChange}
-            variant="outlined"
+            color="secondary"
+            onClick={handleDownloadPDF}
           >
-            <MenuItem value="student">Search by Student Name</MenuItem>
-            <MenuItem value="regno">Search by Register Number</MenuItem>
-            <MenuItem value="year">Search by Year (e.g., 3rd, 2nd)</MenuItem>
-            <MenuItem value="academicYear">
-              Search by Academic Year (e.g., 2023)
-            </MenuItem>
-            <MenuItem value="event">Search by Event</MenuItem>
-          </TextField>
-        </Grid>
-      </Grid>
+            Download PDF
+          </Button>
+        </Box>
 
-      {filteredRequests.length === 0 ? (
-        <Alert severity="info">No OD requests found.</Alert>
-      ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Student Name</TableCell>
-                <TableCell>Roll Number</TableCell>
-                <TableCell>Department</TableCell>
-                <TableCell>Event</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell>Reason</TableCell>
-                <TableCell>Faculty Advisor</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Time Elapsed</TableCell>
-                <TableCell>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredRequests.map((request) => (
-                <TableRow key={request._id}>
-                  <TableCell>{request.student?.name || "N/A"}</TableCell>
-                  <TableCell>{request.student?.registerNo || "N/A"}</TableCell>
-                  <TableCell>{request.department || "N/A"}</TableCell>
-                  <TableCell>{request.eventName || "N/A"}</TableCell>
-                  <TableCell>
-                    {request.eventDate
-                      ? new Date(request.eventDate).toLocaleDateString()
-                      : "N/A"}
-                  </TableCell>
-                  <TableCell>
-                    <Tooltip title={request.reason || "No reason provided"}>
-                      <Typography noWrap style={{ maxWidth: 200 }}>
-                        {request.reason || "N/A"}
-                      </Typography>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell>{request.classAdvisor?.name || "N/A"}</TableCell>
-                  <TableCell>
-                    <Chip
-                      label={request.status?.replace(/_/g, " ") || "N/A"}
-                      color={getStatusColor(request.status)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {getTimeElapsed(
-                      request.lastStatusChangeAt || request.createdAt
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Sender Email Section */}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Sender Email Settings
+          </Typography>
+          <Box display="flex" alignItems="center" gap={2}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={handleOpenSenderDialog}
+            >
+              Change Sender Email
+            </Button>
+          </Box>
+          {senderEmailError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {senderEmailError}
+            </Alert>
+          )}
+        </Paper>
+
+        {/* Sender Email Change Dialog */}
+        <Dialog open={openSenderDialog} onClose={handleCloseSenderDialog}>
+          <DialogTitle>Change Sender Email</DialogTitle>
+          <DialogContent>
+            <TextField
+              label="Sender Email"
+              value={senderEmail}
+              onChange={(e) => setSenderEmail(e.target.value)}
+              fullWidth
+              margin="normal"
+            />
+            <TextField
+              label="Sender Email Password"
+              type="password"
+              value={senderEmailPassword}
+              onChange={(e) => setSenderEmailPassword(e.target.value)}
+              fullWidth
+              margin="normal"
+            />
+            {senderEmailError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {senderEmailError}
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleCloseSenderDialog}>Cancel</Button>
+            <Button
+              onClick={handleSenderDialogSubmit}
+              variant="contained"
+              color="primary"
+              disabled={
+                senderEmailLoading || !senderEmail || !senderEmailPassword
+              }
+            >
+              {senderEmailLoading ? "Saving..." : "Submit"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Grid container spacing={2} sx={{ mb: 3, alignItems: "end" }}>
+          <Grid item xs={12} md={2}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              label="Student Name"
+              value={filterStudent}
+              onChange={(e) => setFilterStudent(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              label="Register Number"
+              value={filterRegno}
+              onChange={(e) => setFilterRegno(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              label="Year"
+              value={filterYear}
+              onChange={(e) => setFilterYear(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              select
+              fullWidth
+              variant="outlined"
+              label="Year Level"
+              value={filterYearLevel}
+              onChange={(e) => setFilterYearLevel(e.target.value)}
+            >
+              <MenuItem value="">All Years</MenuItem>
+              <MenuItem value="1">1st Year</MenuItem>
+              <MenuItem value="2">2nd Year</MenuItem>
+              <MenuItem value="3">3rd Year</MenuItem>
+              <MenuItem value="4">4th Year</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+              <Grid container spacing={1}>
+                <Grid item xs={6}>
+                  <DatePicker
+                    label="Academic Year Start"
+                    value={academicYearRange[0]}
+                    onChange={(newValue) =>
+                      setAcademicYearRange([newValue, academicYearRange[1]])
+                    }
+                    renderInput={(params) => (
+                      <TextField {...params} fullWidth size="small" />
                     )}
-                  </TableCell>
-                  <TableCell>
-                    {request.status === "forwarded_to_admin" && (
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        size="small"
-                        onClick={() => handleForwardToHod(request._id)}
-                      >
-                        Forward to HOD
-                      </Button>
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <DatePicker
+                    label="Academic Year End"
+                    value={academicYearRange[1]}
+                    onChange={(newValue) =>
+                      setAcademicYearRange([academicYearRange[0], newValue])
+                    }
+                    renderInput={(params) => (
+                      <TextField {...params} fullWidth size="small" />
                     )}
-                  </TableCell>
+                  />
+                </Grid>
+              </Grid>
+            </LocalizationProvider>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              label="Event"
+              value={filterEvent}
+              onChange={(e) => setFilterEvent(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button
+              fullWidth
+              variant="outlined"
+              color="secondary"
+              onClick={handleClearFilters}
+            >
+              Clear Filters
+            </Button>
+          </Grid>
+        </Grid>
+
+        {filteredRequests.length === 0 ? (
+          <Alert severity="info">No OD requests found.</Alert>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Student Name</TableCell>
+                  <TableCell>Roll Number</TableCell>
+                  <TableCell>Department</TableCell>
+                  <TableCell>Event</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell>Reason</TableCell>
+                  <TableCell>Faculty Advisor</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Time Elapsed</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
-    </Box>
+              </TableHead>
+              <TableBody>
+                {filteredRequests.map((request) => (
+                  <TableRow key={request._id}>
+                    <TableCell>{request.student?.name || "N/A"}</TableCell>
+                    <TableCell>
+                      {request.student?.registerNo || "N/A"}
+                    </TableCell>
+                    <TableCell>{request.department || "N/A"}</TableCell>
+                    <TableCell>{request.eventName || "N/A"}</TableCell>
+                    <TableCell>
+                      {request.eventDate
+                        ? new Date(request.eventDate).toLocaleDateString()
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Tooltip title={request.reason || "No reason provided"}>
+                        <Typography noWrap style={{ maxWidth: 200 }}>
+                          {request.reason || "N/A"}
+                        </Typography>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell>{request.classAdvisor?.name || "N/A"}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={request.status?.replace(/_/g, " ") || "N/A"}
+                        color={getStatusColor(request.status)}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {getTimeElapsed(
+                        request.lastStatusChangeAt || request.createdAt
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {request.status === "forwarded_to_admin" && (
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          onClick={() => handleForwardToHod(request._id)}
+                        >
+                          Forward to HOD
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Box>
+    </>
   );
 };
 
