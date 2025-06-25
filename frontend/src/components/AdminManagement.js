@@ -41,6 +41,9 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import dayjs from "dayjs";
 import { isAfter, isBefore, isEqual, startOfDay, endOfDay } from "date-fns";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import EditIcon from '@mui/icons-material/Edit';
+import IconButton from '@mui/material/IconButton';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 // Register ChartJS components
 ChartJS.register(ArcElement, ChartTooltip, Legend, Title);
@@ -74,6 +77,17 @@ const AdminManagement = () => {
   // Add new filter states for 1st/2nd/3rd/4th year
   const [filterYearLevel, setFilterYearLevel] = useState("");
   const [academicYearRange, setAcademicYearRange] = useState([null, null]);
+
+  const [eventTypeRequests, setEventTypeRequests] = useState([]);
+  const [eventTypes, setEventTypes] = useState([]);
+  const [eventTypeMsg, setEventTypeMsg] = useState("");
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editEventTypeIdx, setEditEventTypeIdx] = useState(null);
+  const [editEventTypeValue, setEditEventTypeValue] = useState("");
+
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteEventTypeValue, setDeleteEventTypeValue] = useState("");
 
   const fetchStudentStats = async () => {
     try {
@@ -137,6 +151,34 @@ const AdminManagement = () => {
       setSenderEmailLoading(false);
     };
     fetchSenderEmail();
+  }, []);
+
+  // Fetch event type requests and event types
+  useEffect(() => {
+    const fetchEventTypeRequests = async () => {
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/api/settings/event-type-requests`,
+          { headers: { "x-auth-token": localStorage.getItem("token") } }
+        );
+        setEventTypeRequests(res.data.requests || []);
+      } catch (err) {
+        setEventTypeRequests([]);
+      }
+    };
+    const fetchEventTypes = async () => {
+      try {
+        const res = await axios.get(
+          `${API_BASE_URL}/api/settings/event-types`,
+          { headers: { "x-auth-token": localStorage.getItem("token") } }
+        );
+        setEventTypes(res.data.eventTypes || []);
+      } catch (err) {
+        setEventTypes([]);
+      }
+    };
+    fetchEventTypeRequests();
+    fetchEventTypes();
   }, []);
 
   useEffect(() => {
@@ -552,6 +594,100 @@ const AdminManagement = () => {
     setFilterEvent("");
   };
 
+  const handleAcceptEventType = async (eventType, idx) => {
+    setEventTypeMsg("");
+    const finalEventType = eventTypeRequests[idx]?.eventType || eventType;
+    try {
+      await axios.post(
+        `${API_BASE_URL}/api/settings/event-types`,
+        { eventType: finalEventType },
+        { headers: { "x-auth-token": localStorage.getItem("token") } }
+      );
+      // Remove the request from the backend
+      await axios.delete(
+        `${API_BASE_URL}/api/settings/event-type-requests`,
+        { data: { eventType: finalEventType }, headers: { "x-auth-token": localStorage.getItem("token") } }
+      );
+      // Remove the request from the list
+      const updatedRequests = [...eventTypeRequests];
+      updatedRequests.splice(idx, 1);
+      setEventTypeRequests(updatedRequests);
+      setEventTypeMsg(`Added '${finalEventType}' to event types.`);
+      // Refresh event types
+      const res = await axios.get(
+        `${API_BASE_URL}/api/settings/event-types`,
+        { headers: { "x-auth-token": localStorage.getItem("token") } }
+      );
+      setEventTypes(res.data.eventTypes || []);
+    } catch (err) {
+      setEventTypeMsg(
+        err.response?.data?.message || "Failed to add event type."
+      );
+    }
+  };
+
+  const handleRejectEventType = async (idx) => {
+    setEventTypeMsg("");
+    // Remove from backend
+    try {
+      await axios.delete(
+        `${API_BASE_URL}/api/settings/event-type-requests`,
+        { data: { eventType: eventTypeRequests[idx].eventType }, headers: { "x-auth-token": localStorage.getItem("token") } }
+      );
+    } catch (err) {}
+    // Remove from UI
+    const updatedRequests = [...eventTypeRequests];
+    updatedRequests.splice(idx, 1);
+    setEventTypeRequests(updatedRequests);
+    setEventTypeMsg("Request rejected.");
+  };
+
+  const handleOpenEditDialog = (idx) => {
+    setEditEventTypeIdx(idx);
+    setEditEventTypeValue(eventTypeRequests[idx].eventType);
+    setEditDialogOpen(true);
+  };
+
+  const handleCloseEditDialog = () => {
+    setEditDialogOpen(false);
+    setEditEventTypeIdx(null);
+    setEditEventTypeValue("");
+  };
+
+  const handleSaveEditEventType = () => {
+    if (editEventTypeIdx !== null) {
+      const updatedRequests = [...eventTypeRequests];
+      updatedRequests[editEventTypeIdx].eventType = editEventTypeValue;
+      setEventTypeRequests(updatedRequests);
+    }
+    handleCloseEditDialog();
+  };
+
+  const handleOpenDeleteDialog = (eventType) => {
+    setDeleteEventTypeValue(eventType);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialogOpen(false);
+    setDeleteEventTypeValue("");
+  };
+
+  const handleDeleteEventType = async () => {
+    try {
+      await axios.delete(
+        `${API_BASE_URL}/api/settings/event-types`,
+        { data: { eventType: deleteEventTypeValue }, headers: { "x-auth-token": localStorage.getItem("token") } }
+      );
+      setEventTypes(eventTypes.filter((et) => et !== deleteEventTypeValue));
+      setDeleteDialogOpen(false);
+      setDeleteEventTypeValue("");
+      setEventTypeMsg(`Deleted '${deleteEventTypeValue}' from event types.`);
+    } catch (err) {
+      setEventTypeMsg(err.response?.data?.message || "Failed to delete event type.");
+    }
+  };
+
   if (loading || statsLoading) {
     return (
       <Box
@@ -876,7 +1012,129 @@ const AdminManagement = () => {
             </Table>
           </TableContainer>
         )}
+
+        {/* Event Type Requests Section */}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Event Type Requests
+          </Typography>
+          {eventTypeMsg && <Alert severity="info" sx={{ mb: 2 }}>{eventTypeMsg}</Alert>}
+          {eventTypeRequests.length === 0 ? (
+            <Alert severity="success">No pending event type requests.</Alert>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Requested Event Type</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {eventTypeRequests.map((req, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {req.eventType}
+                          <IconButton size="small" sx={{ ml: 1 }} onClick={() => handleOpenEditDialog(idx)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                      <TableCell>{req.date ? new Date(req.date).toLocaleString() : "-"}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="contained"
+                          color="primary"
+                          size="small"
+                          sx={{ mr: 1 }}
+                          onClick={() => handleAcceptEventType(req.eventType, idx)}
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => handleRejectEventType(idx)}
+                        >
+                          Reject
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Paper>
+
+        {/* Event Types Section */}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Event Types
+          </Typography>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Event Type</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {eventTypes.map((et, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{et}</TableCell>
+                    <TableCell>
+                      <IconButton color="error" onClick={() => handleOpenDeleteDialog(et)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
       </Box>
+
+      {/* Edit Event Type Dialog */}
+      <Dialog open={editDialogOpen} onClose={handleCloseEditDialog}>
+        <DialogTitle>Edit Event Type Name</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Event Type Name"
+            type="text"
+            fullWidth
+            value={editEventTypeValue}
+            onChange={e => setEditEventTypeValue(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseEditDialog}>Cancel</Button>
+          <Button onClick={handleSaveEditEventType} variant="contained" color="primary">
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Event Type Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={handleCloseDeleteDialog}>
+        <DialogTitle>Delete Event Type</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete '{deleteEventTypeValue}' from event types?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog}>Cancel</Button>
+          <Button onClick={handleDeleteEventType} variant="contained" color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </>
   );
 };

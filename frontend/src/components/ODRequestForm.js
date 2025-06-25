@@ -15,6 +15,10 @@ import {
   RadioGroup,
   FormControlLabel,
   Radio,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { TimePicker } from "@mui/x-date-pickers/TimePicker";
@@ -22,11 +26,15 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import axios from "axios";
 import { useAuth } from "../contexts/AuthContext";
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 const ODRequestForm = () => {
   const { user } = useAuth();
   const [formData, setFormData] = useState({
     eventName: "",
+    eventType: "hackathon",
     eventDate: null,
     startDate: null,
     endDate: null,
@@ -35,9 +43,28 @@ const ODRequestForm = () => {
     startTime: null,
     endTime: null,
   });
+  const [eventTypes, setEventTypes] = useState(["hackathon"]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [brochureFile, setBrochureFile] = useState(null);
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestedEventType, setRequestedEventType] = useState("");
+  const [requestEventTypeMsg, setRequestEventTypeMsg] = useState("");
+
+  useEffect(() => {
+    // Fetch event types from backend
+    const fetchEventTypes = async () => {
+      try {
+        const res = await axios.get("http://localhost:5000/api/settings/event-types", {
+          headers: { "x-auth-token": localStorage.getItem("token") },
+        });
+        setEventTypes(res.data.eventTypes || ["hackathon"]);
+      } catch (err) {
+        setEventTypes(["hackathon"]);
+      }
+    };
+    fetchEventTypes();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -87,6 +114,7 @@ const ODRequestForm = () => {
     // Frontend validation for required fields
     if (
       !formData.eventName ||
+      !formData.eventType ||
       !formData.eventDate ||
       !formData.startDate ||
       !formData.endDate ||
@@ -125,6 +153,7 @@ const ODRequestForm = () => {
       setSuccess("OD request submitted successfully");
       setFormData({
         eventName: "",
+        eventType: "hackathon",
         eventDate: null,
         startDate: null,
         endDate: null,
@@ -168,6 +197,35 @@ const ODRequestForm = () => {
                 onChange={handleChange}
                 required
               />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <FormControl fullWidth required>
+                  <InputLabel id="event-type-label">Event Type</InputLabel>
+                  <Select
+                    labelId="event-type-label"
+                    id="eventType"
+                    name="eventType"
+                    value={formData.eventType}
+                    label="Event Type"
+                    onChange={handleChange}
+                  >
+                    {eventTypes.map((type) => (
+                      <MenuItem key={type} value={type}>{type.charAt(0).toUpperCase() + type.slice(1)}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Tooltip title="Request new event type">
+                  <IconButton
+                    size="small"
+                    sx={{ ml: 1 }}
+                    onClick={() => setRequestDialogOpen(true)}
+                  >
+                    <AddCircleOutlineIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Grid>
 
             <Grid item xs={12} sm={4}>
@@ -286,6 +344,49 @@ const ODRequestForm = () => {
           </Grid>
         </Box>
       </Paper>
+
+      <Dialog open={requestDialogOpen} onClose={() => setRequestDialogOpen(false)}>
+        <DialogTitle>Request New Event Type</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Event Type Name"
+            type="text"
+            fullWidth
+            value={requestedEventType}
+            onChange={e => setRequestedEventType(e.target.value)}
+          />
+          {requestEventTypeMsg && <Alert severity="info" sx={{ mt: 2 }}>{requestEventTypeMsg}</Alert>}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRequestDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              setRequestEventTypeMsg("");
+              if (!requestedEventType.trim()) {
+                setRequestEventTypeMsg("Please enter an event type name.");
+                return;
+              }
+              try {
+                await axios.post(
+                  "http://localhost:5000/api/settings/event-type-requests",
+                  { eventType: requestedEventType },
+                  { headers: { "x-auth-token": localStorage.getItem("token") } }
+                );
+                setRequestEventTypeMsg("Request submitted to admin.");
+                setRequestedEventType("");
+              } catch (err) {
+                setRequestEventTypeMsg(
+                  err.response?.data?.message || "Failed to submit request."
+                );
+              }
+            }}
+          >
+            Submit Request
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 };
